@@ -7,6 +7,20 @@ receivers:
 processors:
   batch: {}
 
+connectors:
+  # Turns the AI SDK's spans into duration histograms, so dashboards can chart
+  # model calls, tool calls and whole runs from the same spans Tempo stores.
+  spanmetrics:
+    histogram:
+      unit: s
+      explicit:
+        buckets: [50ms, 100ms, 250ms, 500ms, 1s, 2s, 4s, 8s, 16s, 32s, 64s]
+    dimensions:
+      - name: gen_ai.operation.name
+      - name: gen_ai.request.model
+      - name: gen_ai.tool.name
+    metrics_flush_interval: 15s
+
 exporters:
   otlp_http:
     endpoint: ${env:OTLP_ENDPOINT}
@@ -16,6 +30,10 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [otlp]
+      receivers: [otlp, spanmetrics]
       processors: [batch]
       exporters: [otlp_http]
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_http, spanmetrics]

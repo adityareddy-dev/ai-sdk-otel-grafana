@@ -4,7 +4,10 @@
 // gen_ai.client.inference.duration histogram. Token usage is recorded here as
 // the semconv gen_ai.client.token.usage histogram, because the AI SDK puts
 // usage on spans, not on a metric.
-import { metrics } from '@opentelemetry/api';
+import { context, metrics, trace } from '@opentelemetry/api';
+import { TracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace';
+import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { resourceFromAttributes } from '@opentelemetry/resources';
@@ -24,12 +27,21 @@ const MODELS = (process.env.MODELS ?? 'ollama/qwen2.5:0.5b@30000').split(',').ma
   return { providerId: id.slice(0, i), modelId: id.slice(i + 1), pauseMs: Number(pause ?? 30000) };
 });
 
+const resource = resourceFromAttributes({
+  'service.name': 'oncall-agent',
+  'service.namespace': 'golden-grot-demo',
+  'service.version': '1.0.0',
+});
+// The AI SDK's spans (invoke_agent, chat, execute_tool) go to the same OTLP endpoint.
+const tracerProvider = new TracerProvider({
+  resource,
+  spanProcessors: [new BatchSpanProcessor({ exporter: new OTLPTraceExporter() })],
+});
+context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
+trace.setGlobalTracerProvider(tracerProvider);
+
 const provider = new MeterProvider({
-  resource: resourceFromAttributes({
-    'service.name': 'oncall-agent',
-    'service.namespace': 'golden-grot-demo',
-    'service.version': '1.0.0',
-  }),
+  resource,
   readers: [
     new PeriodicExportingMetricReader({
       exporter: new OTLPMetricExporter(),
@@ -38,7 +50,8 @@ const provider = new MeterProvider({
   ],
 });
 metrics.setGlobalMeterProvider(provider);
-registerTelemetry(new OpenTelemetry());
+// @ai-sdk/otel ships its own copy of @opentelemetry/api, so hand it the tracer directly.
+registerTelemetry(new OpenTelemetry({ tracer: tracerProvider.getTracer('gen_ai') }));
 
 const meter = metrics.getMeter('oncall-agent', '1.0.0');
 // Same buckets the semconv spec advises for gen_ai.client.token.usage.
@@ -144,8 +157,25 @@ async function runOnce({ providerId, modelId }) {
   }
 }
 
+// Start every counter series at zero. Prometheus can't take an increase from a
+// series' first sample, so without this the first run per model would vanish.
+for (const { providerId, modelId } of MODELS) {
+  const attrs = { 'gen_ai.operation.name': 'chat', 'gen_ai.provider.name': providerName(models[providerId](modelId).provider), 'gen_ai.request.model': modelId };
+  runs.add(0, { ...attrs, outcome: 'ok', finish_reason: 'stop' });
+  runs.add(0, { ...attrs, outcome: 'timeout', finish_reason: 'error' });
+  runs.add(0, { ...attrs, outcome: 'error', finish_reason: 'error' });
+  for (const q of QUESTIONS) for (const c of ['used_required_tools', 'answered', 'on_topic']) for (const r of ['pass', 'fail']) {
+    checks.add(0, { ...attrs, 'agent.task': q.task, check: c, result: r });
+  }
+  for (const t of Object.keys(tools)) toolCalls.add(0, { ...attrs, 'gen_ai.tool.name': t });
+}
+
 let stopping = false;
-process.on('SIGTERM', async () => { stopping = true; await provider.shutdown(); process.exit(0); });
+process.on('SIGTERM', async () => {
+  stopping = true;
+  await Promise.all([provider.shutdown(), tracerProvider.shutdown()]);
+  process.exit(0);
+});
 await Promise.all(MODELS.map(async (m) => {
   while (!stopping) {
     await runOnce(m).catch((e) => console.error('run failed', e?.message));

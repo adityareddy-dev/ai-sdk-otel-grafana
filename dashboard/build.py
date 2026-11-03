@@ -65,13 +65,14 @@ def stat(title, expr, unit, desc='', decimals=None, color=BLUE, thresholds=None)
     return p
 
 
-def series(title, targets, unit, desc='', overrides=(), stack=False, bars=False, min0=True, legend_calcs=('mean', 'max')):
+def series(title, targets, unit, desc='', overrides=(), stack=False, bars=False, min0=True, legend_calcs=('mean', 'max'), max_=None):
     custom = {'lineWidth': 2, 'fillOpacity': 0 if not (stack or bars) else 80, 'showPoints': 'never',
               'drawStyle': 'bars' if bars else 'line', 'spanNulls': True, 'gradientMode': 'none',
               'axisSoftMin': 0 if min0 else None, 'insertNulls': False,
               'stacking': {'mode': 'normal' if stack else 'none', 'group': 'A'}}
     return {'type': 'timeseries', 'title': title, 'description': desc, 'datasource': DS, 'targets': list(targets),
-            'fieldConfig': {'defaults': {'unit': unit, 'custom': custom, 'color': {'mode': 'palette-classic'}},
+            'fieldConfig': {'defaults': {'unit': unit, 'custom': custom, 'color': {'mode': 'palette-classic'},
+                                         **({'max': max_} if max_ is not None else {'max': 1, 'min': 0} if unit == 'percentunit' else {})},
                             'overrides': list(overrides)},
             'options': {'legend': {'displayMode': 'table', 'placement': 'bottom', 'calcs': list(legend_calcs), 'showLegend': True},
                         'tooltip': {'mode': 'multi', 'sort': 'desc'}}}
@@ -140,9 +141,9 @@ ai.add(stat('Calls that failed', f'sum(increase({INF}_count{{error_type!=""}}[1h
 ai.row('Latency: gen_ai.client.inference.duration')
 model_colors = [color_override('.*gemma.*', BLUE, True), color_override('.*gemini.*', ORANGE, True)]
 ai.add(series('p50 and p95 inference latency by model', [
-    target(f'histogram_quantile(0.50, sum by (le, gen_ai_request_model) (rate({INF}_bucket{{error_type=""}}[$__rate_interval])))', 'p50 {{gen_ai_request_model}}', 'A'),
-    target(f'histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate({INF}_bucket{{error_type=""}}[$__rate_interval])))', 'p95 {{gen_ai_request_model}}', 'B')],
-    's', 'Successful calls only. The p95 line is dashed.',
+    target(f'histogram_quantile(0.50, sum by (le, gen_ai_request_model) (rate({INF}_bucket{{error_type=""}}[15m])))', 'p50 {{gen_ai_request_model}}', 'A'),
+    target(f'histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate({INF}_bucket{{error_type=""}}[15m])))', 'p95 {{gen_ai_request_model}}', 'B')],
+    's', 'Successful calls only, rolling 15 minutes. The p95 line is dashed.',
     overrides=model_colors + [{'matcher': {'id': 'byRegexp', 'options': '^p95.*'},
                                'properties': [{'id': 'custom.lineStyle', 'value': {'fill': 'dash', 'dash': [10, 6]}}]}]), 14, 9, 0)
 ai.add(heatmap('Where model calls land, by bucket', f'sum by (le) (increase({INF}_bucket[$__rate_interval]))',
@@ -198,73 +199,32 @@ ai.add(series('Tool calls the model asked for', [
     'short', 'get_error_rate and get_runbook.', bars=True, stack=True, legend_calcs=('sum',),
     overrides=[color_override('get_error_rate', AQUA), color_override('get_runbook', MAGENTA)]), 8, 8, 16)
 
+SM = 'traces_span_metrics_duration_seconds'
+ai.row('Spans from @ai-sdk/otel, turned into metrics by the Collector')
+ai.add(series('p95 duration from spans: runs, model calls, tools', [
+    target(f'histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate({SM}_bucket{{gen_ai_operation_name="invoke_agent"}}[15m])))', 'run {{gen_ai_request_model}}', 'A'),
+    target(f'histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate({SM}_bucket{{gen_ai_operation_name="chat"}}[15m])))', 'model call {{gen_ai_request_model}}', 'B'),
+    target(f'histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate({SM}_bucket{{gen_ai_operation_name="execute_tool"}}[15m])))', 'tool {{gen_ai_tool_name}}', 'C')],
+    's', 'The Collector\'s spanmetrics connector reads the invoke_agent, chat and execute_tool spans the AI SDK emits and writes duration histograms. Rolling 15 minutes. Dashed lines are model calls.',
+    overrides=[color_override('.*gemma.*', BLUE, True), color_override('.*gemini.*', ORANGE, True),
+               color_override('tool get_error_rate', AQUA), color_override('tool get_runbook', MAGENTA),
+               {'matcher': {'id': 'byRegexp', 'options': '^model call.*'},
+                'properties': [{'id': 'custom.lineStyle', 'value': {'fill': 'dash', 'dash': [10, 6]}}]}]), 12, 9, 0)
+ai.add(series('Where a run\'s time goes', [
+    target(f'sum by (gen_ai_request_model) (rate({SM}_sum{{gen_ai_operation_name="chat"}}[15m])) / sum by (gen_ai_request_model) (rate({SM}_count{{gen_ai_operation_name="invoke_agent"}}[15m]))', 'in model calls, {{gen_ai_request_model}}', 'A'),
+    target(f'sum(rate({SM}_sum{{gen_ai_operation_name="execute_tool"}}[15m])) / sum(rate({SM}_count{{gen_ai_operation_name="invoke_agent"}}[15m]))', 'in tools, all models', 'B')],
+    's', 'Average seconds per run, from span durations. Model time is nearly all of it.',
+    overrides=[color_override('.*gemma.*', BLUE, True), color_override('.*gemini.*', ORANGE, True), color_override('in tools, all models', AQUA)]), 6, 9, 12)
+ai.add(series('Model calls per run', [
+    target(f'sum by (gen_ai_request_model) (rate({SM}_count{{gen_ai_operation_name="chat"}}[30m])) / sum by (gen_ai_request_model) (rate({SM}_count{{gen_ai_operation_name="invoke_agent"}}[30m]))', '{{gen_ai_request_model}}')],
+    'short', 'chat spans per invoke_agent span, rolling 30 minutes. Each tool round trip adds a call.', overrides=model_colors), 6, 9, 18)
+
 ai_json = dashboard('ai-agent-genai-otel', 'AI agent: latency, tokens and cost from @ai-sdk/otel',
                     'gen_ai.client.inference.duration from @ai-sdk/otel, plus token usage and list-price cost, for an AI SDK agent on two models.',
                     ['ai-sdk', 'opentelemetry', 'gen-ai', 'golden-grot'], ai.panels)
 
-# ---------------------------------------------------------------- cluster
-M, S = 'job="shop-api"', 'job="shop-api-stock"'
-cl = Board()
-cl.add(text(
-    '### Node.js cluster metrics through one Prometheus endpoint\n'
-    'One shop API runs as four Node `cluster` workers, twice, with the same traffic. '
-    '**shop-api** uses [@adityareddy-dev/otel-cluster-metrics](https://www.npmjs.com/package/@adityareddy-dev/otel-cluster-metrics): '
-    'workers report to the primary, which serves one `/metrics` for the whole cluster. '
-    '**shop-api-stock** runs the stock OpenTelemetry Prometheus exporter in each worker on the shared port, so each scrape reaches whichever worker accepts it. '
-    'Every four minutes one worker is retired and replaced, one in five times with SIGKILL.'), 24, 4)
-cl.row('Same traffic, two ways of exporting it')
-pair = [color_override('shop-api', BLUE), color_override('shop-api-stock', ORANGE)]
-cl.add(series('Requests counter as Prometheus sees it', [
-    target(f'sum by (job) (shop_requests_total{{job=~"shop-api|shop-api-stock"}})', '{{job}}')],
-    'short', 'The raw cumulative counter. One endpoint per cluster climbs steadily. The stock exporter shows one worker\'s count per scrape, so it jumps between workers and drops when a worker restarts.',
-    overrides=pair, legend_calcs=('lastNotNull',)), 16, 10, 0)
-cl.add(stat('Count, merged', f'sum(shop_requests_total{{{M}}})', 'short', 'Since the primary started.', 0, BLUE), 4, 5, 16)
-cl.add(stat('Count, stock', f'sum(shop_requests_total{{{S}}})', 'short', 'Whatever worker answered the last scrape.', 0, ORANGE), 4, 5, 20)
-cl.add(stat('Resets in 1h, merged', f'sum(resets(shop_requests_total{{{M}}}[1h]))', 'short', 'Prometheus treats any drop in a counter as a restart.', 0, BLUE), 4, 5, 16)
-cl.add(stat('Resets in 1h, stock', f'sum(resets(shop_requests_total{{{S}}}[1h]))', 'short', 'Each one makes rate() and increase() guess.', 0, ORANGE), 4, 5, 20)
-cl.add(series('Requests per second', [
-    target('sum by (job) (rate(shop_requests_total{job=~"shop-api|shop-api-stock"}[$__rate_interval]))', '{{job}}')],
-    'reqps', 'Both apps get the same traffic, so these lines should match. Every drop in the stock counter is read as a reset, which inflates rate().',
-    overrides=pair), 12, 8, 0)
-cl.add(series('p95 request latency', [
-    target('histogram_quantile(0.95, sum by (le, job) (rate(shop_request_duration_bucket{job=~"shop-api|shop-api-stock"}[$__rate_interval])))', '{{job}}')],
-    's', 'Merged histograms add counts, sums and buckets across workers. The stock line is one worker\'s sample.',
-    overrides=pair), 12, 8, 12)
-
-cl.row('Inside the merged cluster (shop-api)')
-cl.add(series('Requests per second by route', [
-    target(f'sum by (http_route) (rate(shop_requests_total{{{M}}}[$__rate_interval]))', '{{http_route}}')],
-    'reqps', 'Monotonic sums: one latest snapshot per worker, retired workers\' totals kept.', stack=True,
-    overrides=[color_override('/products', BLUE), color_override('/cart', AQUA), color_override('/checkout', VIOLET)]), 8, 8, 0)
-cl.add(series('p50 and p95 latency, /checkout', [
-    target(f'histogram_quantile(0.50, sum by (le) (rate(shop_request_duration_bucket{{{M}, http_route="/checkout"}}[$__rate_interval])))', 'p50', 'A'),
-    target(f'histogram_quantile(0.95, sum by (le) (rate(shop_request_duration_bucket{{{M}, http_route="/checkout"}}[$__rate_interval])))', 'p95', 'B')],
-    's', 'From the cluster-wide histogram.', overrides=[color_override('p50', BLUE), color_override('p95', VIOLET)]), 8, 8, 8)
-cl.add(series('Checkout errors per minute', [
-    target(f'sum(rate(shop_requests_total{{{M}, http_response_status_code="500"}}[$__rate_interval])) * 60', '500s')],
-    'short', 'About 3% of checkouts fail on purpose.', overrides=[color_override('500s', RED)]), 8, 8, 16)
-cl.add(series('In-flight requests and email queue, whole cluster', [
-    target(f'sum(shop_active_requests{{{M}}})', 'in flight (non-monotonic sum)', 'A'),
-    target(f'sum(queue_depth{{{M}}})', 'email queue (gauge, sum reducer)', 'B')],
-    'short', 'Non-monotonic sums add current worker values and drop exited workers. Each checkout queues confirmation emails, and queue.depth is summed across workers with gaugeReducers: { "queue.depth": "sum" }.',
-    overrides=[color_override('in flight (non-monotonic sum)', BLUE), color_override('email queue (gauge, sum reducer)', AQUA)]), 12, 8, 0)
-cl.add(series('V8 heap per worker', [
-    target(f'max by (cluster_worker_id) (worker_heap_used{{{M}}})', '{{cluster_worker_id}}')],
-    'bytes', 'Gauges stay one series per worker, keyed by cluster.worker.id (worker ID plus boot ID). A line ends when its worker is retired and a new one starts.',
-    legend_calcs=()), 12, 8, 12)
-cl.add(stat('Workers live now', f'count(max by (cluster_worker_id) (worker_heap_used{{{M}}}))', 'short', '', 0, BLUE), 6, 4, 0)
-cl.add(stat('Worker processes seen, 24h', f'count(max by (cluster_worker_id) (max_over_time(worker_heap_used{{{M}}}[24h])))', 'short', 'Each boot gets its own ID, so this counts restarts too.', 0, VIOLET), 6, 4, 6)
-cl.add(stat('Primary scrape OK', f'min(up{{{M}}})', 'bool_yes_no', 'The handler returns 503 for an incomplete round instead of partial data.', 0,
-            thresholds={'mode': 'absolute', 'steps': [{'color': RED, 'value': None}, {'color': GOOD, 'value': 1}]}), 6, 4, 12)
-cl.add(stat('Requests in the last hour, merged', f'sum(increase(shop_requests_total{{{M}}}[1h]))', 'short', '', 0, BLUE), 6, 4, 18)
-
-cl_json = dashboard('node-cluster-otel-metrics', 'Node.js cluster: one Prometheus endpoint for every worker',
-                    'otel-cluster-metrics against the stock exporter, same app, same traffic.',
-                    ['nodejs', 'opentelemetry', 'prometheus', 'golden-grot'], cl.panels)
-
 suffix = '' if not UID else '.live'
-for name, d in (('ai-agent-genai-otel', ai_json), ('node-cluster-otel-metrics', cl_json)):
-    with open(os.path.join(OUT, f'{name}{suffix}.json'), 'w') as f:
-        json.dump(d, f, indent=2)
-        f.write('\n')
-print('wrote', suffix or 'portable', 'dashboards')
+with open(os.path.join(OUT, f'dashboard{suffix}.json'), 'w') as f:
+    json.dump(ai_json, f, indent=2)
+    f.write('\n')
+print('wrote', suffix or 'portable', 'dashboard')
