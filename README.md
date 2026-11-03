@@ -29,19 +29,21 @@ Every question also gets an `oncall_question` span above the AI SDK's `invoke_ag
 
 Live, running on Grafana Cloud: https://brightparlor286.grafana.net/public-dashboards/5277cad1e14448b58d05284a54404e86
 
-`dashboard/dashboard.json`, imports into any Grafana with a Prometheus and a Tempo data source (Dashboards > New > Import). Panels:
+`dashboard/dashboard.json`, imports into any Grafana with a Prometheus and a Tempo data source (Dashboards > New > Import). Panels, with the detail rows folded so the answer comes first:
 
-- model calls, p95 latency, tokens, cost and failed calls for the last hour
+- right now: runs finished in the last 15 minutes (zero means it stopped), task checks passed, p95 model call, failed calls, and spend per month at this pace against the budget
+- both models side by side for the last 6 hours: p95 model call and whole run, how often each called the tools it needed and named what was asked, how often the deadline cut it off, tokens and cost per 1,000 runs
 - p50 and p95 latency per model, and a heatmap of the histogram's own buckets
 - tokens per minute and per call, split input and output
 - cost per hour and per run at list price, spend against a daily budget, projected spend per day
 - task checks per model and per kind of question
 - runs by outcome, failed calls by `error.type`, tool calls
 - from the spans: p95 per run, model call and tool, where a run's time goes, model calls per run
+- model calls that failed for any reason other than the deadline, marked on every chart
 - p95 run time and outcomes per kind of question, from the `oncall_question` span
 - from Tempo: runs that failed a check, runs cut off by their deadline and runs over 8 seconds, counted with TraceQL metrics. Signed in, each bar links to its traces. Shared dashboards don't run Tempo queries, so the public copy leaves this row out
 
-Cost is tokens times the list price in `dashboard/prices.json`. The calls here run on the free tier, so the cost panels show what the same traffic would cost on the paid tier. Gemma has no paid price on the Gemini API, so it shows as zero. To change prices or the budget, edit `prices.json` and run `python3 dashboard/build.py`. `python3 dashboard/build.py <prometheus-uid> <tempo-uid>` writes a copy bound to two data sources, without the Tempo row, for a public dashboard.
+Cost is tokens times the list price in `dashboard/prices.json`. The calls here run on the free tier, so the cost panels show what the same traffic would cost on the paid tier. Gemma has no paid price on the Gemini API, so it shows as zero, or "no paid price" in the table. To change prices or the budget, edit `prices.json` and run `python3 dashboard/build.py`. `python3 dashboard/build.py <prometheus-uid> <tempo-uid>` writes a copy bound to two data sources, without the Tempo row, for a public dashboard.
 
 ## Run it
 

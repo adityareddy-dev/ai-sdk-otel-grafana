@@ -89,6 +89,39 @@ def heatmap(title, expr, desc=''):
             'fieldConfig': {'defaults': {}, 'overrides': []}}
 
 
+def collapse(panels, titles):
+    # Folds the named rows: their panels move inside the row and open on click.
+    out, row = [], None
+    for p in panels:
+        if p['type'] == 'row':
+            row = p if p['title'] in titles else None
+            if row:
+                row['collapsed'] = True
+            out.append(p)
+        elif row:
+            row['panels'].append(p)
+        else:
+            out.append(p)
+    return out
+
+
+def compare(title, columns, desc=''):
+    # One row per model, one column per instant query, joined on the model label.
+    targets = [target(expr, '', chr(65 + i), instant=True, range=False, format='table') for i, (_, expr, _, _) in enumerate(columns)]
+    rename = {f'Value #{chr(65 + i)}': name for i, (name, _, _, _) in enumerate(columns)}
+    rename['gen_ai_request_model'] = 'Model'
+    overrides = []
+    for name, _, unit, extra in columns:
+        props = [{'id': 'unit', 'value': unit}] + list(extra)
+        overrides.append({'matcher': {'id': 'byName', 'options': name}, 'properties': props})
+    return {'type': 'table', 'title': title, 'description': desc, 'datasource': DS, 'targets': targets,
+            'transformations': [{'id': 'merge', 'options': {}},
+                                {'id': 'organize', 'options': {'excludeByName': {'Time': True}, 'renameByName': rename,
+                                                               'indexByName': {'gen_ai_request_model': 0, **{f'Value #{chr(65 + i)}': i + 1 for i in range(len(columns))}}}}],
+            'fieldConfig': {'defaults': {'custom': {'align': 'auto', 'cellOptions': {'type': 'auto'}}}, 'overrides': overrides},
+            'options': {'showHeader': True, 'cellHeight': 'md', 'footer': {'show': False}}}
+
+
 def tempo_series(title, query, legend, desc='', overrides=()):
     # A TraceQL metrics query, counted from spans in Tempo. Search queries stream
     # over a websocket that shared dashboards don't have; metrics queries don't.
@@ -100,10 +133,10 @@ def tempo_series(title, query, legend, desc='', overrides=()):
     return p
 
 
-def dashboard(uid, title, desc, tags, panels, refresh='1m', time='now-6h'):
+def dashboard(uid, title, desc, tags, panels, refresh='1m', time='now-6h', annotations=()):
     d = {'uid': uid, 'title': title, 'description': desc, 'tags': tags, 'timezone': 'browser',
          'editable': True, 'graphTooltip': 1, 'refresh': refresh, 'schemaVersion': 41,
-         'time': {'from': time, 'to': 'now'}, 'templating': {'list': []}, 'annotations': {'list': []},
+         'time': {'from': time, 'to': 'now'}, 'templating': {'list': []}, 'annotations': {'list': list(annotations)},
          'links': [], 'panels': panels}
     if not UID:
         # Shared dashboards on a live stack can't use variables, so only the repo copy has the picker.
@@ -144,14 +177,36 @@ ai.add(text(
     'for every model call. I asked for it in [vercel/ai#24229](https://github.com/vercel/ai/issues/24229) and it shipped in @ai-sdk/otel 1.0.160. '
     'Tokens come from the semconv `gen_ai.client.token.usage` histogram. Cost is tokens times each model\'s list price, '
     f'so it shows what this traffic would cost on the paid tier. Gemma has no paid price, so its cost is zero. Prices as of {PRICES["as_of"]}.'), 24, 4)
-ai.row('Last hour')
-ai.add(stat('Model calls', f'sum(increase({INF}_count[1h]))', 'short', 'Calls to a model in the last hour, every outcome.', 0), 4, 4, 0)
-ai.add(stat('p95 inference latency', f'histogram_quantile(0.95, sum by (le) (rate({INF}_bucket[1h])))', 's', '95th percentile of gen_ai.client.inference.duration over the last hour, all models.', 2, ORANGE), 5, 4, 4)
-ai.add(stat('Tokens', f'sum(increase({TOK}_sum[1h]))', 'short', 'Input plus output tokens in the last hour.', 0, AQUA), 5, 4, 9)
-ai.add(stat('Cost at list price', cost_total('1h'), 'currencyUSD', 'Last hour of tokens times list price per model.', 4, YELLOW), 5, 4, 14)
-ai.add(stat('Calls that failed', f'sum(increase({INF}_count{{error_type!=""}}[1h])) / sum(increase({INF}_count[1h]))', 'percentunit',
-            'Share of model calls the histogram recorded with error.type set (timeouts, rate limits, server errors).', 1,
-            thresholds={'mode': 'absolute', 'steps': [{'color': GOOD, 'value': None}, {'color': YELLOW, 'value': 0.05}, {'color': RED, 'value': 0.15}]}), 5, 4, 19)
+BUDGET = PRICES['daily_budget_usd']
+CHK = 'agent_task_checks_total'
+SM = 'traces_span_metrics_duration_seconds'
+ai.row('Right now')
+ai.add(stat('Runs finished, last 15 minutes', 'sum(increase(agent_runs_total[15m]))', 'short',
+            'Zero means the agent has stopped. Every model runs its own loop, so a stuck model shows up here.', 0,
+            thresholds={'mode': 'absolute', 'steps': [{'color': RED, 'value': None}, {'color': GOOD, 'value': 1}]}), 5, 4, 0)
+ai.add(stat('Task checks passed, last hour', f'sum(increase({CHK}{{result="pass"}}[1h])) / sum(increase({CHK}[1h]))', 'percentunit',
+            'Did it do what it was asked: called the tools the question needs, answered, and named what was asked about. All three checks on every finished run.', 1,
+            thresholds={'mode': 'absolute', 'steps': [{'color': RED, 'value': None}, {'color': YELLOW, 'value': 0.8}, {'color': GOOD, 'value': 0.95}]}), 5, 4, 5)
+ai.add(stat('p95 model call, last hour', f'histogram_quantile(0.95, sum by (le) (rate({INF}_bucket[1h])))', 's',
+            '95th percentile of gen_ai.client.inference.duration over the last hour, all models.', 2, ORANGE), 5, 4, 10)
+ai.add(stat('Calls that failed, last hour', f'sum(increase({INF}_count{{error_type!=""}}[1h])) / sum(increase({INF}_count[1h]))', 'percentunit',
+            'Share of model calls the histogram recorded with error.type set. Most are the 1.5 second deadline one run in ten gets on purpose.', 1,
+            thresholds={'mode': 'absolute', 'steps': [{'color': GOOD, 'value': None}, {'color': YELLOW, 'value': 0.08}, {'color': RED, 'value': 0.15}]}), 4, 4, 15)
+ai.add(stat('Spend per month at this pace', f'sum({cost_expr("1h")}) * 24 * 30', 'currencyUSD',
+            f'Last hour of tokens at list price, times 24 times 30. Budget ${BUDGET * 30:.0f} a month. Gemma 4 26B has no paid price on the Gemini API, so it adds nothing.', 2,
+            thresholds={'mode': 'absolute', 'steps': [{'color': GOOD, 'value': None}, {'color': YELLOW, 'value': BUDGET * 30 * 0.8}, {'color': RED, 'value': BUDGET * 30}]}), 5, 4, 19)
+
+ai.row('Which model does the job')
+NO_PRICE = [{'id': 'mappings', 'value': [{'type': 'value', 'options': {'0': {'text': 'no paid price'}}}]}]
+ai.add(compare('Both models, last 6 hours', [
+    ('p95 model call', f'histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate({INF}_bucket{{error_type=""}}[6h])))', 's', [{'id': 'decimals', 'value': 2}]),
+    ('p95 whole run', f'histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate({SM}_bucket{{gen_ai_operation_name="invoke_agent"}}[6h])))', 's', [{'id': 'decimals', 'value': 1}]),
+    ('Called the tools it needed', f'sum by (gen_ai_request_model) (increase({CHK}{{check="used_required_tools", result="pass"}}[6h])) / sum by (gen_ai_request_model) (increase({CHK}{{check="used_required_tools"}}[6h]))', 'percentunit', [{'id': 'decimals', 'value': 1}]),
+    ('Named what was asked', f'sum by (gen_ai_request_model) (increase({CHK}{{check="on_topic", result="pass"}}[6h])) / sum by (gen_ai_request_model) (increase({CHK}{{check="on_topic"}}[6h]))', 'percentunit', [{'id': 'decimals', 'value': 1}]),
+    ('Cut off by deadline', f'sum by (gen_ai_request_model) (increase(agent_runs_total{{outcome="timeout"}}[6h])) / sum by (gen_ai_request_model) (increase(agent_runs_total[6h]))', 'percentunit', [{'id': 'decimals', 'value': 1}]),
+    ('Tokens per run', f'sum by (gen_ai_request_model) (increase({TOK}_sum[6h])) / sum by (gen_ai_request_model) (increase(agent_runs_total[6h]))', 'short', [{'id': 'decimals', 'value': 0}]),
+    ('Cost per 1,000 runs', f'(({cost_expr("6h")}) or (sum by (gen_ai_request_model) (increase(agent_runs_total[6h])) * 0)) / sum by (gen_ai_request_model) (increase(agent_runs_total[6h])) * 1000', 'currencyUSD', [{'id': 'decimals', 'value': 3}] + NO_PRICE),
+], 'The same questions go to both models all day. Read across a row to pick a model for this job: speed, whether it does what it was asked, and what it costs at list price.'), 24, 5)
 
 ai.row('Latency: gen_ai.client.inference.duration')
 model_colors = [color_override('.*gemma.*', BLUE, True), color_override('.*gemini.*', ORANGE, True)]
@@ -183,7 +238,6 @@ ai.add(series('Cost per agent run', [
     'currencyUSD', 'One-hour cost divided by runs finished in that hour.', overrides=model_colors), 12, 10, 12)
 
 ai.row('Doing what it was asked, within budget')
-CHK = 'agent_task_checks_total'
 ai.add(series('Runs that passed each check', [
     target(f'sum by (check) (increase({CHK}{{result="pass"}}[1h])) / sum by (check) (increase({CHK}[1h]))', '{{check}}')],
     'percentunit', 'Rolling one hour. used_required_tools: the run called every tool its question needs. answered: the reply is not empty. on_topic: the reply names what was asked about.',
@@ -191,13 +245,13 @@ ai.add(series('Runs that passed each check', [
 ai.add(series('Required tools used, by model and task', [
     target(f'sum by (gen_ai_request_model, agent_task) (increase({CHK}{{check="used_required_tools", result="pass"}}[6h])) / sum by (gen_ai_request_model, agent_task) (increase({CHK}{{check="used_required_tools"}}[6h]))', '{{gen_ai_request_model}} {{agent_task}}')],
     'percentunit', 'Rolling six hours. Shows which model skips a tool on which kind of question.', legend_calcs=('lastNotNull',)), 9, 10, 9)
-BUDGET = PRICES['daily_budget_usd']
 b = stat('Spend in the last 24 hours, share of daily budget', f'sum({cost_expr("24h")}) / {BUDGET}', 'percentunit',
          f'Last 24 hours of tokens at list price against a ${BUDGET:.2f} daily budget.', 1,
          thresholds={'mode': 'absolute', 'steps': [{'color': GOOD, 'value': None}, {'color': YELLOW, 'value': 0.8}, {'color': RED, 'value': 1}]})
 b['options']['graphMode'] = 'none'
 ai.add(b, 6, 5, 18)
-ai.add(stat('Projected spend per day', f'sum({cost_expr("1h")}) * 24', 'currencyUSD', 'Last hour of cost times 24.', 2, YELLOW), 6, 5, 18)
+ai.add(stat('Cost per 1,000 runs, last 6 hours', f'sum({cost_expr("6h")}) / sum(increase(agent_runs_total[6h])) * 1000', 'currencyUSD',
+            'Both models together at list price. Gemma 4 26B runs count, its cost is zero.', 3, YELLOW), 6, 5, 18)
 
 ai.row('The agent loop')
 ai.add(series('Agent runs by outcome', [
@@ -214,7 +268,6 @@ ai.add(series('Tool calls the model asked for', [
     'short', 'get_error_rate and get_runbook.', bars=True, stack=True, legend_calcs=('sum',),
     overrides=[color_override('get_error_rate', AQUA), color_override('get_runbook', MAGENTA)]), 8, 9, 16)
 
-SM = 'traces_span_metrics_duration_seconds'
 ai.row('Spans from @ai-sdk/otel, turned into metrics by the Collector')
 ai.add(series('p95 duration from spans: runs, model calls, tools', [
     target(f'histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate({SM}_bucket{{gen_ai_operation_name="invoke_agent"}}[15m])))', 'run {{gen_ai_request_model}}', 'A'),
@@ -255,9 +308,14 @@ if not UID:
                         '{ name = "oncall_question" && duration > 8s } | count_over_time() by (span.agent.task, span.gen_ai.request.model)',
                         '', 'Slow runs, counted from spans. Signed in, each bar links to the traces behind it.'), 8, 9, 16)
 
+ERRORS = {'datasource': DS, 'enable': True, 'iconColor': RED, 'name': 'Model call failed, not the deadline',
+          'expr': f'sum by (gen_ai_request_model, error_type) (increase({INF}_count{{error_type!="", error_type!~"TimeoutError|AbortError"}}[2m])) > 0',
+          'step': '2m', 'titleFormat': '{{gen_ai_request_model}} {{error_type}}', 'textFormat': 'model call failed', 'useValueForTime': False}
 ai_json = dashboard('ai-agent-genai-otel', 'AI agent: latency, tokens and cost from @ai-sdk/otel',
                     'gen_ai.client.inference.duration from @ai-sdk/otel, plus token usage and list-price cost, for an AI SDK agent on two models.',
-                    ['ai-sdk', 'opentelemetry', 'gen-ai', 'golden-grot'], ai.panels)
+                    ['ai-sdk', 'opentelemetry', 'gen-ai', 'golden-grot'],
+                    collapse(ai.panels, {'Tokens and cost', 'The agent loop', "Spans from @ai-sdk/otel, turned into metrics by the Collector", 'Which runs, from the traces in Tempo'}),
+                    annotations=[ERRORS])
 
 suffix = '' if not UID else '.live'
 with open(os.path.join(OUT, f'dashboard{suffix}.json'), 'w') as f:
