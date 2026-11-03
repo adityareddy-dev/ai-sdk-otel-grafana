@@ -27,6 +27,15 @@
         "current": {},
         "hide": 0,
         "refresh": 1
+      },
+      {
+        "name": "tempo",
+        "label": "Tempo",
+        "type": "datasource",
+        "query": "tempo",
+        "current": {},
+        "hide": 0,
+        "refresh": 1
       }
     ]
   },
@@ -543,7 +552,7 @@
         "x": 0,
         "y": 10,
         "w": 14,
-        "h": 9
+        "h": 11
       }
     },
     {
@@ -604,7 +613,7 @@
         "x": 14,
         "y": 10,
         "w": 10,
-        "h": 9
+        "h": 11
       }
     },
     {
@@ -615,7 +624,7 @@
       "id": 11,
       "gridPos": {
         "x": 0,
-        "y": 19,
+        "y": 21,
         "w": 24,
         "h": 1
       }
@@ -742,9 +751,9 @@
       "id": 12,
       "gridPos": {
         "x": 0,
-        "y": 20,
+        "y": 22,
         "w": 12,
-        "h": 8
+        "h": 10
       }
     },
     {
@@ -839,9 +848,9 @@
       "id": 13,
       "gridPos": {
         "x": 12,
-        "y": 20,
+        "y": 22,
         "w": 12,
-        "h": 8
+        "h": 10
       }
     },
     {
@@ -966,9 +975,9 @@
       "id": 14,
       "gridPos": {
         "x": 0,
-        "y": 28,
+        "y": 32,
         "w": 12,
-        "h": 8
+        "h": 10
       }
     },
     {
@@ -1063,9 +1072,9 @@
       "id": 15,
       "gridPos": {
         "x": 12,
-        "y": 28,
+        "y": 32,
         "w": 12,
-        "h": 8
+        "h": 10
       }
     },
     {
@@ -1076,7 +1085,7 @@
       "id": 16,
       "gridPos": {
         "x": 0,
-        "y": 36,
+        "y": 42,
         "w": 24,
         "h": 1
       }
@@ -1190,9 +1199,9 @@
       "id": 17,
       "gridPos": {
         "x": 0,
-        "y": 37,
+        "y": 43,
         "w": 9,
-        "h": 8
+        "h": 10
       }
     },
     {
@@ -1257,9 +1266,9 @@
       "id": 18,
       "gridPos": {
         "x": 9,
-        "y": 37,
+        "y": 43,
         "w": 9,
-        "h": 8
+        "h": 10
       }
     },
     {
@@ -1306,7 +1315,7 @@
               }
             ]
           },
-          "decimals": 0
+          "decimals": 1
         },
         "overrides": []
       },
@@ -1328,9 +1337,9 @@
       "id": 19,
       "gridPos": {
         "x": 18,
-        "y": 37,
+        "y": 43,
         "w": 6,
-        "h": 4
+        "h": 5
       }
     },
     {
@@ -1392,9 +1401,9 @@
       "id": 20,
       "gridPos": {
         "x": 18,
-        "y": 41,
+        "y": 48,
         "w": 6,
-        "h": 4
+        "h": 5
       }
     },
     {
@@ -1405,7 +1414,7 @@
       "id": 21,
       "gridPos": {
         "x": 0,
-        "y": 45,
+        "y": 53,
         "w": 24,
         "h": 1
       }
@@ -1516,9 +1525,9 @@
       "id": 22,
       "gridPos": {
         "x": 0,
-        "y": 46,
+        "y": 54,
         "w": 8,
-        "h": 8
+        "h": 9
       }
     },
     {
@@ -1535,7 +1544,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (error_type, gen_ai_request_model) (increase(gen_ai_client_inference_duration_seconds_count{error_type!=\"\"}[$__rate_interval]))",
+          "expr": "sum by (error_type, gen_ai_request_model) (increase(gen_ai_client_inference_duration_seconds_count{error_type!=\"\"}[$__rate_interval])) > 0",
           "legendFormat": "{{gen_ai_request_model}} {{error_type}}",
           "refId": "A",
           "range": true
@@ -1612,9 +1621,9 @@
       "id": 23,
       "gridPos": {
         "x": 8,
-        "y": 46,
+        "y": 54,
         "w": 8,
-        "h": 8
+        "h": 9
       }
     },
     {
@@ -1708,9 +1717,9 @@
       "id": 24,
       "gridPos": {
         "x": 16,
-        "y": 46,
+        "y": 54,
         "w": 8,
-        "h": 8
+        "h": 9
       }
     },
     {
@@ -1721,7 +1730,7 @@
       "id": 25,
       "gridPos": {
         "x": 0,
-        "y": 54,
+        "y": 63,
         "w": 24,
         "h": 1
       }
@@ -1886,9 +1895,9 @@
       "id": 26,
       "gridPos": {
         "x": 0,
-        "y": 55,
+        "y": 64,
         "w": 12,
-        "h": 9
+        "h": 11
       }
     },
     {
@@ -2008,9 +2017,9 @@
       "id": 27,
       "gridPos": {
         "x": 12,
-        "y": 55,
+        "y": 64,
         "w": 6,
-        "h": 9
+        "h": 11
       }
     },
     {
@@ -2105,8 +2114,356 @@
       "id": 28,
       "gridPos": {
         "x": 18,
-        "y": 55,
+        "y": 64,
         "w": 6,
+        "h": 11
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 run time by kind of question",
+      "description": "From the agent's oncall_question span, which wraps a whole run. Rolling 30 minutes. Questions that need a tool and a runbook take more round trips.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, agent_task) (rate(traces_span_metrics_duration_seconds_bucket{span_name=\"oncall_question\", agent_task!=\"\"}[30m])))",
+          "legendFormat": "{{agent_task}}",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "drawStyle": "line",
+            "spanNulls": true,
+            "gradientMode": "none",
+            "axisSoftMin": 0,
+            "insertNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 29,
+      "gridPos": {
+        "x": 0,
+        "y": 75,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Runs by kind of question and outcome",
+      "description": "Counted from the oncall_question spans. Shows which kinds of question hit the 1.5 second deadline.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (agent_task, agent_outcome) (increase(traces_span_metrics_calls_total{span_name=\"oncall_question\", agent_task!=\"\"}[$__rate_interval])) > 0",
+          "legendFormat": "{{agent_task}} {{agent_outcome}}",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "drawStyle": "bars",
+            "spanNulls": true,
+            "gradientMode": "none",
+            "axisSoftMin": 0,
+            "insertNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "sum"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 30,
+      "gridPos": {
+        "x": 12,
+        "y": 75,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "row",
+      "title": "Which runs, from the traces in Tempo",
+      "collapsed": false,
+      "panels": [],
+      "id": 31,
+      "gridPos": {
+        "x": 0,
+        "y": 84,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Runs that failed a check, by check and model",
+      "description": "Counted from the oncall_question spans in 5 minute steps. agent.checks.failed lists every check a run failed, so a run that skipped its tool and also left out the service shows as both.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "refId": "A",
+          "queryType": "traceql",
+          "query": "{ name = \"oncall_question\" && span.agent.checks.failed != nil } | count_over_time() by (span.agent.checks.failed, span.gen_ai.request.model)",
+          "metricsQueryType": "range",
+          "step": "5m",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "drawStyle": "bars",
+            "spanNulls": true,
+            "gradientMode": "none",
+            "axisSoftMin": 0,
+            "insertNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "barAlignment": -1
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "sum"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 32,
+      "gridPos": {
+        "x": 0,
+        "y": 85,
+        "w": 8,
+        "h": 9
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Runs cut off by their deadline, by kind of question",
+      "description": "One run in ten gets a 1.5 second deadline on purpose. Runs with more tool round trips get cut off more.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "refId": "A",
+          "queryType": "traceql",
+          "query": "{ name = \"oncall_question\" && span.agent.outcome = \"timeout\" } | count_over_time() by (span.agent.task)",
+          "metricsQueryType": "range",
+          "step": "5m",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "drawStyle": "bars",
+            "spanNulls": true,
+            "gradientMode": "none",
+            "axisSoftMin": 0,
+            "insertNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "barAlignment": -1
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "sum"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 33,
+      "gridPos": {
+        "x": 8,
+        "y": 85,
+        "w": 8,
+        "h": 9
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Runs over 8 seconds, by kind of question and model",
+      "description": "Slow runs, counted from spans. Signed in, each bar links to the traces behind it.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "${tempo}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "${tempo}"
+          },
+          "refId": "A",
+          "queryType": "traceql",
+          "query": "{ name = \"oncall_question\" && duration > 8s } | count_over_time() by (span.agent.task, span.gen_ai.request.model)",
+          "metricsQueryType": "range",
+          "step": "5m",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "drawStyle": "bars",
+            "spanNulls": true,
+            "gradientMode": "none",
+            "axisSoftMin": 0,
+            "insertNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "barAlignment": -1
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "sum"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 34,
+      "gridPos": {
+        "x": 16,
+        "y": 85,
+        "w": 8,
         "h": 9
       }
     }

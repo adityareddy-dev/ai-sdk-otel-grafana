@@ -4,7 +4,7 @@
 // gen_ai.client.inference.duration histogram. Token usage is recorded here as
 // the semconv gen_ai.client.token.usage histogram, because the AI SDK puts
 // usage on spans, not on a metric.
-import { context, metrics, trace } from '@opentelemetry/api';
+import { context, metrics, trace, SpanStatusCode } from '@opentelemetry/api';
 import { TracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
@@ -52,6 +52,9 @@ const provider = new MeterProvider({
 metrics.setGlobalMeterProvider(provider);
 // @ai-sdk/otel ships its own copy of @opentelemetry/api, so hand it the tracer directly.
 registerTelemetry(new OpenTelemetry({ tracer: tracerProvider.getTracer('gen_ai') }));
+// One span per question, above the AI SDK's invoke_agent span, carrying what the
+// metrics can't: which question it was, how it ended and which checks it failed.
+const tracer = tracerProvider.getTracer('oncall-agent', '1.0.0');
 
 const meter = metrics.getMeter('oncall-agent', '1.0.0');
 // Same buckets the semconv spec advises for gen_ai.client.token.usage.
@@ -129,31 +132,44 @@ async function runOnce({ providerId, modelId }) {
   const q = pick(QUESTIONS);
   const called = new Set();
   let n = 0;
+  const span = tracer.startSpan('oncall_question', { attributes: { 'gen_ai.request.model': modelId, 'agent.task': q.task } });
   try {
-    const result = await agent.generate({
-      prompt: q.prompt,
-      abortSignal: AbortSignal.timeout(tight ? 1500 : 90000),
-      onStepFinish: (step) => {
-        n += 1;
-        const u = step.usage ?? {};
-        if (u.inputTokens != null) tokenUsage.record(u.inputTokens, { ...attrs, 'gen_ai.token.type': 'input' });
-        if (u.outputTokens != null) tokenUsage.record(u.outputTokens, { ...attrs, 'gen_ai.token.type': 'output' });
-        for (const c of step.toolCalls ?? []) {
-          called.add(c.toolName);
-          toolCalls.add(1, { ...attrs, 'gen_ai.tool.name': c.toolName });
-        }
-      },
+    await context.with(trace.setSpan(context.active(), span), async () => {
+      const result = await agent.generate({
+        prompt: q.prompt,
+        abortSignal: AbortSignal.timeout(tight ? 1500 : 90000),
+        onStepFinish: (step) => {
+          n += 1;
+          const u = step.usage ?? {};
+          if (u.inputTokens != null) tokenUsage.record(u.inputTokens, { ...attrs, 'gen_ai.token.type': 'input' });
+          if (u.outputTokens != null) tokenUsage.record(u.outputTokens, { ...attrs, 'gen_ai.token.type': 'output' });
+          for (const c of step.toolCalls ?? []) {
+            called.add(c.toolName);
+            toolCalls.add(1, { ...attrs, 'gen_ai.tool.name': c.toolName });
+          }
+        },
+      });
+      runs.add(1, { ...attrs, outcome: 'ok', finish_reason: result.finishReason ?? 'unknown' });
+      const text = (result.text ?? '').toLowerCase();
+      const failed = [];
+      const check = (name, pass) => {
+        checks.add(1, { ...attrs, 'agent.task': q.task, check: name, result: pass ? 'pass' : 'fail' });
+        if (!pass) failed.push(name);
+      };
+      check('used_required_tools', q.tools.every((t) => called.has(t)));
+      check('answered', text.trim().length > 0);
+      check('on_topic', q.words.every((w) => text.includes(w)));
+      span.setAttribute('agent.outcome', 'ok');
+      if (failed.length) span.setAttribute('agent.checks.failed', failed.join(','));
     });
-    runs.add(1, { ...attrs, outcome: 'ok', finish_reason: result.finishReason ?? 'unknown' });
-    const text = (result.text ?? '').toLowerCase();
-    const check = (name, pass) => checks.add(1, { ...attrs, 'agent.task': q.task, check: name, result: pass ? 'pass' : 'fail' });
-    check('used_required_tools', q.tools.every((t) => called.has(t)));
-    check('answered', text.trim().length > 0);
-    check('on_topic', q.words.every((w) => text.includes(w)));
   } catch (e) {
-    runs.add(1, { ...attrs, outcome: e?.name === 'AbortError' || e?.name === 'TimeoutError' ? 'timeout' : 'error', finish_reason: 'error' });
+    const outcome = e?.name === 'AbortError' || e?.name === 'TimeoutError' ? 'timeout' : 'error';
+    runs.add(1, { ...attrs, outcome, finish_reason: 'error' });
+    span.setAttribute('agent.outcome', outcome);
+    span.setStatus({ code: SpanStatusCode.ERROR, message: e?.name });
   } finally {
     steps.record(Math.max(n, 1), attrs);
+    span.end();
   }
 }
 

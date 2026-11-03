@@ -23,11 +23,13 @@ The spans go to the same OTLP endpoint, and the Collector's `spanmetrics` connec
 
 `agent.task.checks` is the "is it doing what it was asked" part. Every question says which tools a correct run has to call and which words the answer has to contain, and every finished run is checked three ways: `used_required_tools`, `answered` and `on_topic`. It's simple on purpose. A model that answers "checkout looks fine" without calling `get_error_rate` fails, and you see which model does that on which kind of question.
 
+Every question also gets an `oncall_question` span above the AI SDK's `invoke_agent` span, with `agent.task`, `agent.outcome` and `agent.checks.failed` on it. The metrics say how many runs failed a check, the span says which run, so you can open it and see every model call and tool call it made. The Collector also adds `agent.task` and `agent.outcome` as `spanmetrics` dimensions, so run time and outcome per kind of question are in Prometheus too.
+
 ## The dashboard
 
 Live, running on Grafana Cloud: https://brightparlor286.grafana.net/public-dashboards/5277cad1e14448b58d05284a54404e86
 
-`dashboard/dashboard.json`, imports into any Grafana with a Prometheus data source (Dashboards > New > Import). Panels:
+`dashboard/dashboard.json`, imports into any Grafana with a Prometheus and a Tempo data source (Dashboards > New > Import). Panels:
 
 - model calls, p95 latency, tokens, cost and failed calls for the last hour
 - p50 and p95 latency per model, and a heatmap of the histogram's own buckets
@@ -36,8 +38,10 @@ Live, running on Grafana Cloud: https://brightparlor286.grafana.net/public-dashb
 - task checks per model and per kind of question
 - runs by outcome, failed calls by `error.type`, tool calls
 - from the spans: p95 per run, model call and tool, where a run's time goes, model calls per run
+- p95 run time and outcomes per kind of question, from the `oncall_question` span
+- from Tempo: runs that failed a check, runs cut off by their deadline and runs over 8 seconds, counted with TraceQL metrics. Signed in, each bar links to its traces. Shared dashboards don't run Tempo queries, so the public copy leaves this row out
 
-Cost is tokens times the list price in `dashboard/prices.json`. The calls here run on the free tier, so the cost panels show what the same traffic would cost on the paid tier. Gemma has no paid price on the Gemini API, so it shows as zero. To change prices or the budget, edit `prices.json` and run `python3 dashboard/build.py`.
+Cost is tokens times the list price in `dashboard/prices.json`. The calls here run on the free tier, so the cost panels show what the same traffic would cost on the paid tier. Gemma has no paid price on the Gemini API, so it shows as zero. To change prices or the budget, edit `prices.json` and run `python3 dashboard/build.py`. `python3 dashboard/build.py <prometheus-uid> <tempo-uid>` writes a copy bound to two data sources, without the Tempo row, for a public dashboard.
 
 ## Run it
 

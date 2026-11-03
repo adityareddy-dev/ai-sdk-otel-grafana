@@ -1,12 +1,13 @@
-"""Writes the two Grafana dashboards as JSON.
+"""Writes the Grafana dashboard as JSON.
 
-python3 build.py            -> portable files with a data source picker, for the repos
-python3 build.py <ds-uid>   -> files bound to one Prometheus data source, for a live stack
+python3 build.py            -> portable file with data source pickers, for this repo
+python3 build.py <prom-uid> <tempo-uid>  -> file bound to one Prometheus and one Tempo data source, for a live stack
 """
 import json, os, sys
 
 UID = sys.argv[1] if len(sys.argv) > 1 else None
 DS = {'type': 'prometheus', 'uid': UID or '${datasource}'}
+TDS = {'type': 'tempo', 'uid': sys.argv[2] if UID else '${tempo}'}
 OUT = os.path.dirname(os.path.abspath(__file__))
 
 # Dark-surface steps of the categorical order; slot 1 and 2 carry the two things
@@ -88,6 +89,17 @@ def heatmap(title, expr, desc=''):
             'fieldConfig': {'defaults': {}, 'overrides': []}}
 
 
+def tempo_series(title, query, legend, desc='', overrides=()):
+    # A TraceQL metrics query, counted from spans in Tempo. Search queries stream
+    # over a websocket that shared dashboards don't have; metrics queries don't.
+    p = series(title, [], 'short', desc, overrides=overrides, bars=True, stack=True, legend_calcs=('sum',))
+    p['datasource'] = TDS
+    p['targets'] = [{'datasource': TDS, 'refId': 'A', 'queryType': 'traceql', 'query': query,
+                     'metricsQueryType': 'range', 'step': '5m', 'legendFormat': legend}]
+    p['fieldConfig']['defaults']['custom']['barAlignment'] = -1
+    return p
+
+
 def dashboard(uid, title, desc, tags, panels, refresh='1m', time='now-6h'):
     d = {'uid': uid, 'title': title, 'description': desc, 'tags': tags, 'timezone': 'browser',
          'editable': True, 'graphTooltip': 1, 'refresh': refresh, 'schemaVersion': 41,
@@ -97,6 +109,9 @@ def dashboard(uid, title, desc, tags, panels, refresh='1m', time='now-6h'):
         # Shared dashboards on a live stack can't use variables, so only the repo copy has the picker.
         d['templating']['list'].append({'name': 'datasource', 'label': 'Prometheus', 'type': 'datasource',
                                         'query': 'prometheus', 'current': {}, 'hide': 0, 'refresh': 1})
+        if any(p.get('datasource') == TDS for p in panels):
+            d['templating']['list'].append({'name': 'tempo', 'label': 'Tempo', 'type': 'datasource',
+                                            'query': 'tempo', 'current': {}, 'hide': 0, 'refresh': 1})
     return d
 
 
@@ -145,59 +160,59 @@ ai.add(series('p50 and p95 inference latency by model', [
     target(f'histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate({INF}_bucket{{error_type=""}}[15m])))', 'p95 {{gen_ai_request_model}}', 'B')],
     's', 'Successful calls only, rolling 15 minutes. The p95 line is dashed.',
     overrides=model_colors + [{'matcher': {'id': 'byRegexp', 'options': '^p95.*'},
-                               'properties': [{'id': 'custom.lineStyle', 'value': {'fill': 'dash', 'dash': [10, 6]}}]}]), 14, 9, 0)
+                               'properties': [{'id': 'custom.lineStyle', 'value': {'fill': 'dash', 'dash': [10, 6]}}]}]), 14, 11, 0)
 ai.add(heatmap('Where model calls land, by bucket', f'sum by (le) (increase({INF}_bucket[$__rate_interval]))',
-               'Every call, both models, in the histogram\'s own bucket boundaries (0.01 s to 81.92 s).'), 10, 9, 14)
+               'Every call, both models, in the histogram\'s own bucket boundaries (0.01 s to 81.92 s).'), 10, 11, 14)
 
 ai.row('Tokens and cost')
 ai.add(series('Tokens per minute, input and output', [
     target(f'sum by (gen_ai_request_model, gen_ai_token_type) (rate({TOK}_sum[$__rate_interval])) * 60', '{{gen_ai_request_model}} {{gen_ai_token_type}}')],
     'short', 'From gen_ai.client.token.usage, recorded once per model call.', stack=True,
     overrides=[color_override('.*gemma.*input', BLUE, True), color_override('.*gemma.*output', VIOLET, True),
-               color_override('.*gemini.*input', ORANGE, True), color_override('.*gemini.*output', YELLOW, True)]), 12, 8, 0)
+               color_override('.*gemini.*input', ORANGE, True), color_override('.*gemini.*output', YELLOW, True)]), 12, 10, 0)
 ai.add(series('Cost per hour at list price', [target(cost_expr('1h'), '{{gen_ai_request_model}}')],
               'currencyUSD', 'Rolling one-hour token cost per model. List prices in prices.json next to this dashboard.',
-              overrides=model_colors), 12, 8, 12)
+              overrides=model_colors), 12, 10, 12)
 ai.add(series('Tokens per model call (average)', [
     target(f'sum by (gen_ai_request_model, gen_ai_token_type) (rate({TOK}_sum[$__rate_interval])) / sum by (gen_ai_request_model, gen_ai_token_type) (rate({TOK}_count[$__rate_interval]))', '{{gen_ai_request_model}} {{gen_ai_token_type}}')],
     'short', 'Tool results make input grow with each step of a run.',
     overrides=[color_override('.*gemma.*input', BLUE, True), color_override('.*gemma.*output', VIOLET, True),
-               color_override('.*gemini.*input', ORANGE, True), color_override('.*gemini.*output', YELLOW, True)]), 12, 8, 0)
+               color_override('.*gemini.*input', ORANGE, True), color_override('.*gemini.*output', YELLOW, True)]), 12, 10, 0)
 ai.add(series('Cost per agent run', [
     target(f'{cost_expr("1h")} / sum by (gen_ai_request_model) (increase(agent_runs_total[1h]))', '{{gen_ai_request_model}}')],
-    'currencyUSD', 'One-hour cost divided by runs finished in that hour.', overrides=model_colors), 12, 8, 12)
+    'currencyUSD', 'One-hour cost divided by runs finished in that hour.', overrides=model_colors), 12, 10, 12)
 
 ai.row('Doing what it was asked, within budget')
 CHK = 'agent_task_checks_total'
 ai.add(series('Runs that passed each check', [
     target(f'sum by (check) (increase({CHK}{{result="pass"}}[1h])) / sum by (check) (increase({CHK}[1h]))', '{{check}}')],
     'percentunit', 'Rolling one hour. used_required_tools: the run called every tool its question needs. answered: the reply is not empty. on_topic: the reply names what was asked about.',
-    overrides=[color_override('used_required_tools', BLUE), color_override('answered', AQUA), color_override('on_topic', VIOLET)]), 9, 8, 0)
+    overrides=[color_override('used_required_tools', BLUE), color_override('answered', AQUA), color_override('on_topic', VIOLET)]), 9, 10, 0)
 ai.add(series('Required tools used, by model and task', [
     target(f'sum by (gen_ai_request_model, agent_task) (increase({CHK}{{check="used_required_tools", result="pass"}}[6h])) / sum by (gen_ai_request_model, agent_task) (increase({CHK}{{check="used_required_tools"}}[6h]))', '{{gen_ai_request_model}} {{agent_task}}')],
-    'percentunit', 'Rolling six hours. Shows which model skips a tool on which kind of question.', legend_calcs=('lastNotNull',)), 9, 8, 9)
+    'percentunit', 'Rolling six hours. Shows which model skips a tool on which kind of question.', legend_calcs=('lastNotNull',)), 9, 10, 9)
 BUDGET = PRICES['daily_budget_usd']
 b = stat('Spend in the last 24 hours, share of daily budget', f'sum({cost_expr("24h")}) / {BUDGET}', 'percentunit',
-         f'Last 24 hours of tokens at list price against a ${BUDGET:.2f} daily budget.', 0,
+         f'Last 24 hours of tokens at list price against a ${BUDGET:.2f} daily budget.', 1,
          thresholds={'mode': 'absolute', 'steps': [{'color': GOOD, 'value': None}, {'color': YELLOW, 'value': 0.8}, {'color': RED, 'value': 1}]})
 b['options']['graphMode'] = 'none'
-ai.add(b, 6, 4, 18)
-ai.add(stat('Projected spend per day', f'sum({cost_expr("1h")}) * 24', 'currencyUSD', 'Last hour of cost times 24.', 2, YELLOW), 6, 4, 18)
+ai.add(b, 6, 5, 18)
+ai.add(stat('Projected spend per day', f'sum({cost_expr("1h")}) * 24', 'currencyUSD', 'Last hour of cost times 24.', 2, YELLOW), 6, 5, 18)
 
 ai.row('The agent loop')
 ai.add(series('Agent runs by outcome', [
     target('sum by (outcome) (increase(agent_runs_total[$__rate_interval]))', '{{outcome}}')],
     'short', 'One run is a question answered with up to four model calls. One run in ten gets a 1.5 s deadline on purpose.',
     bars=True, stack=True, legend_calcs=('sum',),
-    overrides=[color_override('ok', GOOD), color_override('timeout', YELLOW), color_override('error', RED)]), 8, 8, 0)
+    overrides=[color_override('ok', GOOD), color_override('timeout', YELLOW), color_override('error', RED)]), 8, 9, 0)
 ai.add(series('Failed model calls by error.type', [
-    target(f'sum by (error_type, gen_ai_request_model) (increase({INF}_count{{error_type!=""}}[$__rate_interval]))', '{{gen_ai_request_model}} {{error_type}}')],
+    target(f'sum by (error_type, gen_ai_request_model) (increase({INF}_count{{error_type!=""}}[$__rate_interval])) > 0', '{{gen_ai_request_model}} {{error_type}}')],
     'short', 'The inference histogram records failed calls too, with error.type set.', bars=True, stack=True, legend_calcs=('sum',),
-    overrides=model_colors), 8, 8, 8)
+    overrides=model_colors), 8, 9, 8)
 ai.add(series('Tool calls the model asked for', [
     target('sum by (gen_ai_tool_name) (increase(agent_tool_calls_total[$__rate_interval]))', '{{gen_ai_tool_name}}')],
     'short', 'get_error_rate and get_runbook.', bars=True, stack=True, legend_calcs=('sum',),
-    overrides=[color_override('get_error_rate', AQUA), color_override('get_runbook', MAGENTA)]), 8, 8, 16)
+    overrides=[color_override('get_error_rate', AQUA), color_override('get_runbook', MAGENTA)]), 8, 9, 16)
 
 SM = 'traces_span_metrics_duration_seconds'
 ai.row('Spans from @ai-sdk/otel, turned into metrics by the Collector')
@@ -209,15 +224,36 @@ ai.add(series('p95 duration from spans: runs, model calls, tools', [
     overrides=[color_override('.*gemma.*', BLUE, True), color_override('.*gemini.*', ORANGE, True),
                color_override('tool get_error_rate', AQUA), color_override('tool get_runbook', MAGENTA),
                {'matcher': {'id': 'byRegexp', 'options': '^model call.*'},
-                'properties': [{'id': 'custom.lineStyle', 'value': {'fill': 'dash', 'dash': [10, 6]}}]}]), 12, 9, 0)
+                'properties': [{'id': 'custom.lineStyle', 'value': {'fill': 'dash', 'dash': [10, 6]}}]}]), 12, 11, 0)
 ai.add(series('Where a run\'s time goes', [
     target(f'sum by (gen_ai_request_model) (rate({SM}_sum{{gen_ai_operation_name="chat"}}[15m])) / sum by (gen_ai_request_model) (rate({SM}_count{{gen_ai_operation_name="invoke_agent"}}[15m]))', 'in model calls, {{gen_ai_request_model}}', 'A'),
     target(f'sum(rate({SM}_sum{{gen_ai_operation_name="execute_tool"}}[15m])) / sum(rate({SM}_count{{gen_ai_operation_name="invoke_agent"}}[15m]))', 'in tools, all models', 'B')],
     's', 'Average seconds per run, from span durations. Model time is nearly all of it.',
-    overrides=[color_override('.*gemma.*', BLUE, True), color_override('.*gemini.*', ORANGE, True), color_override('in tools, all models', AQUA)]), 6, 9, 12)
+    overrides=[color_override('.*gemma.*', BLUE, True), color_override('.*gemini.*', ORANGE, True), color_override('in tools, all models', AQUA)]), 6, 11, 12)
 ai.add(series('Model calls per run', [
     target(f'sum by (gen_ai_request_model) (rate({SM}_count{{gen_ai_operation_name="chat"}}[30m])) / sum by (gen_ai_request_model) (rate({SM}_count{{gen_ai_operation_name="invoke_agent"}}[30m]))', '{{gen_ai_request_model}}')],
-    'short', 'chat spans per invoke_agent span, rolling 30 minutes. Each tool round trip adds a call.', overrides=model_colors), 6, 9, 18)
+    'short', 'chat spans per invoke_agent span, rolling 30 minutes. Each tool round trip adds a call.', overrides=model_colors), 6, 11, 18)
+Q = 'span_name="oncall_question", agent_task!=""'
+ai.add(series('p95 run time by kind of question', [
+    target(f'histogram_quantile(0.95, sum by (le, agent_task) (rate({SM}_bucket{{{Q}}}[30m])))', '{{agent_task}}')],
+    's', 'From the agent\'s oncall_question span, which wraps a whole run. Rolling 30 minutes. Questions that need a tool and a runbook take more round trips.'), 12, 9, 0)
+ai.add(series('Runs by kind of question and outcome', [
+    target(f'sum by (agent_task, agent_outcome) (increase(traces_span_metrics_calls_total{{{Q}}}[$__rate_interval])) > 0', '{{agent_task}} {{agent_outcome}}')],
+    'short', 'Counted from the oncall_question spans. Shows which kinds of question hit the 1.5 second deadline.',
+    bars=True, stack=True, legend_calcs=('sum',)), 12, 9, 12)
+
+if not UID:
+    # Shared dashboards don't run Tempo queries, so only the repo copy has this row.
+    ai.row('Which runs, from the traces in Tempo')
+    ai.add(tempo_series('Runs that failed a check, by check and model',
+                        '{ name = "oncall_question" && span.agent.checks.failed != nil } | count_over_time() by (span.agent.checks.failed, span.gen_ai.request.model)',
+                        '', 'Counted from the oncall_question spans in 5 minute steps. agent.checks.failed lists every check a run failed, so a run that skipped its tool and also left out the service shows as both.'), 8, 9, 0)
+    ai.add(tempo_series('Runs cut off by their deadline, by kind of question',
+                        '{ name = "oncall_question" && span.agent.outcome = "timeout" } | count_over_time() by (span.agent.task)',
+                        '', 'One run in ten gets a 1.5 second deadline on purpose. Runs with more tool round trips get cut off more.'), 8, 9, 8)
+    ai.add(tempo_series('Runs over 8 seconds, by kind of question and model',
+                        '{ name = "oncall_question" && duration > 8s } | count_over_time() by (span.agent.task, span.gen_ai.request.model)',
+                        '', 'Slow runs, counted from spans. Signed in, each bar links to the traces behind it.'), 8, 9, 16)
 
 ai_json = dashboard('ai-agent-genai-otel', 'AI agent: latency, tokens and cost from @ai-sdk/otel',
                     'gen_ai.client.inference.duration from @ai-sdk/otel, plus token usage and list-price cost, for an AI SDK agent on two models.',
