@@ -1,0 +1,28 @@
+# cp .env.example .env, fill it in, then docker compose up -d
+services:
+  collector:
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.160.0
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+    env_file: .env
+    volumes:
+      - ./collector.yaml:/etc/otelcol/config.yaml:ro
+
+  install:
+    image: node:24-slim
+    working_dir: /app
+    command: ["npm", "ci", "--no-audit", "--no-fund"]
+    volumes: ["./agent:/app"]
+
+  agent:
+    image: node:24-slim
+    restart: unless-stopped
+    working_dir: /app
+    command: ["node", "agent.mjs"]
+    env_file: .env
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://collector:4318
+    volumes: ["./agent:/app:ro"]
+    depends_on:
+      collector: { condition: service_started }
+      install: { condition: service_completed_successfully }

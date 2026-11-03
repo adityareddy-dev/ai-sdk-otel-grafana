@@ -1,0 +1,9 @@
+{
+  "as_of": "November 3, 2026",
+  "source": "https://aistudio.google.com/docs/pricing",
+  "note": "USD per 1M text tokens, paid tier. The local model has no list price.",
+  "daily_budget_usd": 1.0,
+  "models": {
+    "gemini-3.5-flash-lite": { "input": 0.30, "output": 2.50 }
+  }
+}
