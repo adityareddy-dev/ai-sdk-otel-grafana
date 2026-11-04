@@ -29,6 +29,8 @@ Every question also gets an `oncall_question` span above the AI SDK's `invoke_ag
 
 Live, running on Grafana Cloud: https://brightparlor286.grafana.net/public-dashboards/5277cad1e14448b58d05284a54404e86
 
+![The dashboard on Grafana Cloud](docs/dashboard.png)
+
 `dashboard/dashboard.json`, imports into any Grafana with a Prometheus and a Tempo data source (Dashboards > New > Import). Panels, with the detail rows folded so the answer comes first:
 
 - right now: runs finished in the last 15 minutes (zero means it stopped), task checks passed, p95 model call, failed calls, and spend per month at this pace against the budget
