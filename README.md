@@ -33,6 +33,7 @@ Live, running on Grafana Cloud: https://brightparlor286.grafana.net/public-dashb
 
 - right now: runs finished in the last 15 minutes (zero means it stopped), task checks passed, p95 model call, failed calls, and spend per month at this pace against the budget
 - both models side by side for the last 6 hours: p95 model call and whole run, how often each called the tools it needed and named what was asked, how often the deadline cut it off, tokens and cost per 1,000 runs
+- the react-inp-blame fix explainer: explanations in the last hour, how often it named the culprit and the right fix, p95 model call and p95 per explanation, and one row per interaction with the click as measured in Chrome
 - p50 and p95 latency per model, and a heatmap of the histogram's own buckets
 - tokens per minute and per call, split input and output
 - cost per hour and per run at list price, spend against a daily budget, projected spend per day
@@ -45,6 +46,16 @@ Live, running on Grafana Cloud: https://brightparlor286.grafana.net/public-dashb
 
 Cost is tokens times the list price in `dashboard/prices.json`. The calls here run on the free tier, so the cost panels show what the same traffic would cost on the paid tier. Gemma has no paid price on the Gemini API, so it shows as zero, or "no paid price" in the table. To change prices or the budget, edit `prices.json` and run `python3 dashboard/build.py`. `python3 dashboard/build.py <prometheus-uid> <tempo-uid>` writes a copy bound to two data sources, without the Tempo row, for a public dashboard.
 
+## A second service on a real workload
+
+The on-call agent answers made-up questions, so there's a second service on something real. [react-inp-blame](https://github.com/adityareddy-dev/react-inp-blame) is my library that says which React component made a click slow. `explainer/explainer.mjs` opens its live demo at [reactinpblame.com](https://reactinpblame.com) in a headless Chrome, makes one of the demo's slow interactions (an unstable context value, a layout thrash, a 3000-row list on each keystroke and so on), and reads the report the library writes for it. Then a model on the AI SDK, Gemini 3.1 Flash-Lite on the free tier, gets that report. It has one tool, `get_component_source`, which returns the real source of the demo's components from `explainer/source/`. It says why the interaction was slow and what to change.
+
+Every answer gets three checks: `read_source` (it looked at the code), `named_culprit` (it names the component or handler the library blamed) and `right_fix` (it proposes the fix the demo's lab page lists for that interaction, like useMemo, virtualising or moving state down). The model never sees that page.
+
+It's instrumented the same way as the agent: `gen_ai.client.inference.duration` from `@ai-sdk/otel`, `gen_ai.client.token.usage`, and an `explain_interaction` span above the AI SDK's spans, with a `measure_interaction` child for the time in Chrome. It also records `inp_explainer.interaction.duration`, how long each click took in the browser, so the dashboard puts the real slow click next to the time it took to explain it. The two services write the same metric names, so every panel filters on `service_name`.
+
+The lab's cascading-effect interaction is left out. On the production build the click itself stays under the report threshold, and the heavy render comes after the paint.
+
 ## Run it
 
 ```sh
@@ -52,6 +63,6 @@ cp .env.example .env   # Grafana Cloud OTLP endpoint and token, a Gemini API key
 docker compose up -d
 ```
 
-The pause per model is in `MODELS`. The defaults keep Gemini 3.5 Flash-Lite under its free tier's 500 requests a day and Gemma 4 26B well under its 14,400. One run in ten gets a 1.5 second deadline on purpose, so timeouts show up in the failed calls panel.
+The pause per model is in `MODELS`. The defaults keep Gemini 3.5 Flash-Lite under its free tier's 500 requests a day and Gemma 4 26B well under its 14,400. One run in ten gets a 1.5 second deadline on purpose, so timeouts show up in the failed calls panel. The explainer's model and pause are in `INP_MODEL`. One run every eight minutes on average keeps Gemini 3.1 Flash-Lite inside its free tier.
 
 To use a local model instead, start Ollama and add `ollama/<model>@<pause>` to `MODELS`, with `OLLAMA_URL` pointing at its `/v1` endpoint.

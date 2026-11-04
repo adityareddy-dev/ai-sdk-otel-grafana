@@ -105,11 +105,11 @@ def collapse(panels, titles):
     return out
 
 
-def compare(title, columns, desc=''):
-    # One row per model, one column per instant query, joined on the model label.
+def compare(title, columns, desc='', key='gen_ai_request_model', key_name='Model'):
+    # One row per model (or other key label), one column per instant query, joined on that label.
     targets = [target(expr, '', chr(65 + i), instant=True, range=False, format='table') for i, (_, expr, _, _) in enumerate(columns)]
     rename = {f'Value #{chr(65 + i)}': name for i, (name, _, _, _) in enumerate(columns)}
-    rename['gen_ai_request_model'] = 'Model'
+    rename[key] = key_name
     overrides = []
     for name, _, unit, extra in columns:
         props = [{'id': 'unit', 'value': unit}] + list(extra)
@@ -117,7 +117,7 @@ def compare(title, columns, desc=''):
     return {'type': 'table', 'title': title, 'description': desc, 'datasource': DS, 'targets': targets,
             'transformations': [{'id': 'merge', 'options': {}},
                                 {'id': 'organize', 'options': {'excludeByName': {'Time': True}, 'renameByName': rename,
-                                                               'indexByName': {'gen_ai_request_model': 0, **{f'Value #{chr(65 + i)}': i + 1 for i in range(len(columns))}}}}],
+                                                               'indexByName': {key: 0, **{f'Value #{chr(65 + i)}': i + 1 for i in range(len(columns))}}}}],
             'fieldConfig': {'defaults': {'custom': {'align': 'auto', 'cellOptions': {'type': 'auto'}}}, 'overrides': overrides},
             'options': {'showHeader': True, 'cellHeight': 'md', 'footer': {'show': False}}}
 
@@ -152,6 +152,9 @@ def dashboard(uid, title, desc, tags, panels, refresh='1m', time='now-6h', annot
 PRICES = json.load(open(os.path.join(OUT, 'prices.json')))
 INF = 'gen_ai_client_inference_duration_seconds'
 TOK = 'gen_ai_client_token_usage'
+# The two AI services write the same metric names, so each panel picks its service.
+OA = 'service_name="oncall-agent"'
+IX = 'service_name="react-inp-blame-explainer"'
 
 
 def cost_expr(window):
@@ -160,7 +163,7 @@ def cost_expr(window):
     for model, p in PRICES['models'].items():
         for kind in ('input', 'output'):
             per_token = p[kind] / 1e6
-            parts.append(f'sum by (gen_ai_request_model) (increase({TOK}_sum{{gen_ai_request_model="{model}", gen_ai_token_type="{kind}"}}[{window}])) * {per_token:.12g}')
+            parts.append(f'sum by (gen_ai_request_model) (increase({TOK}_sum{{{OA}, gen_ai_request_model="{model}", gen_ai_token_type="{kind}"}}[{window}])) * {per_token:.12g}')
     return 'sum by (gen_ai_request_model) (\n  ' + '\n  or\n  '.join(f'({x})' for x in parts) + '\n)'
 
 
@@ -170,26 +173,27 @@ def cost_total(window):
 
 ai = Board()
 ai.add(text(
-    '### An AI agent, measured with the AI SDK\'s own OpenTelemetry metric\n'
+    '### Two AI SDK services, measured with the AI SDK\'s own OpenTelemetry metric\n'
     'A small on-call helper agent built on the [AI SDK](https://ai-sdk.dev) answers questions about a shop with two tools. '
     'It runs around the clock on two models through the Gemini API free tier: Gemini 3.5 Flash-Lite and the open-weights Gemma 4 26B. '
     'Latency comes from `gen_ai.client.inference.duration`, the histogram [@ai-sdk/otel](https://www.npmjs.com/package/@ai-sdk/otel) records '
     'for every model call. I asked for it in [vercel/ai#24229](https://github.com/vercel/ai/issues/24229) and it shipped in @ai-sdk/otel 1.0.160. '
     'Tokens come from the semconv `gen_ai.client.token.usage` histogram. Cost is tokens times each model\'s list price, '
-    f'so it shows what this traffic would cost on the paid tier. Gemma has no paid price, so its cost is zero. Prices as of {PRICES["as_of"]}.'), 24, 4)
+    f'so it shows what this traffic would cost on the paid tier. Gemma has no paid price, so its cost is zero. Prices as of {PRICES["as_of"]}. '
+    'Further down, the second service runs a real workload: a fix explainer for my react-inp-blame library, on its live demo.'), 24, 4)
 BUDGET = PRICES['daily_budget_usd']
 CHK = 'agent_task_checks_total'
 SM = 'traces_span_metrics_duration_seconds'
-ai.row('Right now')
+ai.row('The on-call agent, right now')
 ai.add(stat('Runs finished, last 15 minutes', 'sum(increase(agent_runs_total[15m]))', 'short',
             'Zero means the agent has stopped. Every model runs its own loop, so a stuck model shows up here.', 0,
             thresholds={'mode': 'absolute', 'steps': [{'color': RED, 'value': None}, {'color': GOOD, 'value': 1}]}), 5, 4, 0)
 ai.add(stat('Task checks passed, last hour', f'sum(increase({CHK}{{result="pass"}}[1h])) / sum(increase({CHK}[1h]))', 'percentunit',
             'Did it do what it was asked: called the tools the question needs, answered, and named what was asked about. All three checks on every finished run.', 1,
             thresholds={'mode': 'absolute', 'steps': [{'color': RED, 'value': None}, {'color': YELLOW, 'value': 0.8}, {'color': GOOD, 'value': 0.95}]}), 5, 4, 5)
-ai.add(stat('p95 model call, last hour', f'histogram_quantile(0.95, sum by (le) (rate({INF}_bucket[1h])))', 's',
+ai.add(stat('p95 model call, last hour', f'histogram_quantile(0.95, sum by (le) (rate({INF}_bucket{{{OA}}}[1h])))', 's',
             '95th percentile of gen_ai.client.inference.duration over the last hour, all models.', 2, ORANGE), 5, 4, 10)
-ai.add(stat('Calls that failed, last hour', f'sum(increase({INF}_count{{error_type!=""}}[1h])) / sum(increase({INF}_count[1h]))', 'percentunit',
+ai.add(stat('Calls that failed, last hour', f'sum(increase({INF}_count{{{OA}, error_type!=""}}[1h])) / sum(increase({INF}_count{{{OA}}}[1h]))', 'percentunit',
             'Share of model calls the histogram recorded with error.type set. Most are the 1.5 second deadline one run in ten gets on purpose.', 1,
             thresholds={'mode': 'absolute', 'steps': [{'color': GOOD, 'value': None}, {'color': YELLOW, 'value': 0.08}, {'color': RED, 'value': 0.15}]}), 4, 4, 15)
 ai.add(stat('Spend per month at this pace', f'sum({cost_expr("1h")}) * 24 * 30', 'currencyUSD',
@@ -199,29 +203,64 @@ ai.add(stat('Spend per month at this pace', f'sum({cost_expr("1h")}) * 24 * 30',
 ai.row('Which model does the job')
 NO_PRICE = [{'id': 'mappings', 'value': [{'type': 'value', 'options': {'0': {'text': 'no paid price'}}}]}]
 ai.add(compare('Both models, last 6 hours', [
-    ('p95 model call', f'histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate({INF}_bucket{{error_type=""}}[6h])))', 's', [{'id': 'decimals', 'value': 2}]),
-    ('p95 whole run', f'histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate({SM}_bucket{{gen_ai_operation_name="invoke_agent"}}[6h])))', 's', [{'id': 'decimals', 'value': 1}]),
+    ('p95 model call', f'histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate({INF}_bucket{{{OA}, error_type=""}}[6h])))', 's', [{'id': 'decimals', 'value': 2}]),
+    ('p95 whole run', f'histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate({SM}_bucket{{{OA}, gen_ai_operation_name="invoke_agent"}}[6h])))', 's', [{'id': 'decimals', 'value': 1}]),
     ('Called the tools it needed', f'sum by (gen_ai_request_model) (increase({CHK}{{check="used_required_tools", result="pass"}}[6h])) / sum by (gen_ai_request_model) (increase({CHK}{{check="used_required_tools"}}[6h]))', 'percentunit', [{'id': 'decimals', 'value': 1}]),
     ('Named what was asked', f'sum by (gen_ai_request_model) (increase({CHK}{{check="on_topic", result="pass"}}[6h])) / sum by (gen_ai_request_model) (increase({CHK}{{check="on_topic"}}[6h]))', 'percentunit', [{'id': 'decimals', 'value': 1}]),
     ('Cut off by deadline', f'sum by (gen_ai_request_model) (increase(agent_runs_total{{outcome="timeout"}}[6h])) / sum by (gen_ai_request_model) (increase(agent_runs_total[6h]))', 'percentunit', [{'id': 'decimals', 'value': 1}]),
-    ('Tokens per run', f'sum by (gen_ai_request_model) (increase({TOK}_sum[6h])) / sum by (gen_ai_request_model) (increase(agent_runs_total[6h]))', 'short', [{'id': 'decimals', 'value': 0}]),
+    ('Tokens per run', f'sum by (gen_ai_request_model) (increase({TOK}_sum{{{OA}}}[6h])) / sum by (gen_ai_request_model) (increase(agent_runs_total[6h]))', 'short', [{'id': 'decimals', 'value': 0}]),
     ('Cost per 1,000 runs', f'(({cost_expr("6h")}) or (sum by (gen_ai_request_model) (increase(agent_runs_total[6h])) * 0)) / sum by (gen_ai_request_model) (increase(agent_runs_total[6h])) * 1000', 'currencyUSD', [{'id': 'decimals', 'value': 3}] + NO_PRICE),
 ], 'The same questions go to both models all day. Read across a row to pick a model for this job: speed, whether it does what it was asked, and what it costs at list price.'), 24, 5)
+
+ai.row('A real workload: the fix explainer for react-inp-blame')
+ai.add(text(
+    '[react-inp-blame](https://github.com/adityareddy-dev/react-inp-blame) is my library that says which React component made a click slow. '
+    'Here a headless Chrome opens its live demo at [reactinpblame.com](https://reactinpblame.com), makes one of the demo\'s slow interactions, '
+    'and reads the report the library writes. A model on the AI SDK (Gemini 3.1 Flash-Lite, Gemini API free tier) gets that report, reads the component\'s source with one tool, '
+    'and says why the interaction was slow and what to change. Every answer is checked against the library\'s own blame and against the fix the demo documents, which the model never sees. '
+    'Same instrumentation as the agent above: `gen_ai.client.inference.duration` from @ai-sdk/otel, token usage, and spans through the Collector.'), 24, 3)
+IXR = 'inp_explainer_runs_total'
+IXC = 'inp_explainer_checks_total'
+IXD = 'inp_explainer_interaction_duration_seconds'
+pct = {'mode': 'absolute', 'steps': [{'color': RED, 'value': None}, {'color': YELLOW, 'value': 0.7}, {'color': GOOD, 'value': 0.9}]}
+ai.add(stat('Explanations, last hour', f'sum(increase({IXR}{{outcome="ok"}}[1h]))', 'short',
+            'Interactions measured on the live demo and explained. Zero means it stopped.', 0,
+            thresholds={'mode': 'absolute', 'steps': [{'color': RED, 'value': None}, {'color': GOOD, 'value': 1}]}), 5, 4, 0)
+ai.add(stat('Named the component the library blamed, last 6 hours', f'sum(increase({IXC}{{check="named_culprit", result="pass"}}[6h])) / sum(increase({IXC}{{check="named_culprit"}}[6h]))', 'percentunit',
+            'The answer names the component, handler or child react-inp-blame put the time on.', 1, thresholds=pct), 5, 4, 5)
+ai.add(stat('Gave the fix the demo documents, last 6 hours', f'sum(increase({IXC}{{check="right_fix", result="pass"}}[6h])) / sum(increase({IXC}{{check="right_fix"}}[6h]))', 'percentunit',
+            'The answer proposes the fix the demo\'s lab page lists for that interaction (useMemo, virtualise, move state down, a worker, and so on). The model never sees that page.', 1, thresholds=pct), 5, 4, 10)
+ai.add(stat('p95 model call, last hour', f'histogram_quantile(0.95, sum by (le) (rate({INF}_bucket{{{IX}}}[1h])))', 's',
+            'gen_ai.client.inference.duration from @ai-sdk/otel, for the explainer only.', 2, BLUE), 4, 4, 15)
+ai.add(stat('p95 to explain one interaction, last hour', f'histogram_quantile(0.95, sum by (le) (rate({SM}_bucket{{{IX}, span_name="explain_interaction", agent_outcome="ok"}}[1h])))', 's',
+            'From the explain_interaction span: measuring the click in Chrome, reading the source and writing the answer.', 1, BLUE), 5, 4, 19)
+ixt = compare('Each slow interaction on the live demo, last 6 hours', [
+    ('Measured in Chrome (median)', f'histogram_quantile(0.5, sum by (le, agent_task) (rate({IXD}_bucket[6h])))', 's', [{'id': 'decimals', 'value': 2}]),
+    ('p95 to explain', f'histogram_quantile(0.95, sum by (le, agent_task) (rate({SM}_bucket{{{IX}, span_name="explain_interaction", agent_outcome="ok"}}[6h])))', 's', [{'id': 'decimals', 'value': 1}]),
+    ('Read the source', f'sum by (agent_task) (increase({IXC}{{check="read_source", result="pass"}}[6h])) / sum by (agent_task) (increase({IXC}{{check="read_source"}}[6h]))', 'percentunit', [{'id': 'decimals', 'value': 0}]),
+    ('Named the culprit', f'sum by (agent_task) (increase({IXC}{{check="named_culprit", result="pass"}}[6h])) / sum by (agent_task) (increase({IXC}{{check="named_culprit"}}[6h]))', 'percentunit', [{'id': 'decimals', 'value': 0}]),
+    ('Right fix', f'sum by (agent_task) (increase({IXC}{{check="right_fix", result="pass"}}[6h])) / sum by (agent_task) (increase({IXC}{{check="right_fix"}}[6h]))', 'percentunit', [{'id': 'decimals', 'value': 0}]),
+    ('Tokens per explanation', f'sum by (agent_task) (increase({TOK}_sum{{{IX}}}[6h])) / sum by (agent_task) (increase({IXR}{{outcome="ok"}}[6h]))', 'short', [{'id': 'decimals', 'value': 0}]),
+], 'One row per interaction in the demo\'s anti-pattern lab. Read across: how slow the click really was, how long the explanation took, and whether it got the cause and the fix right.',
+    key='agent_task', key_name='Interaction')
+ixt['fieldConfig']['defaults']['mappings'] = [{'type': 'special', 'options': {'match': 'nan', 'result': {'text': '–'}}},
+                                               {'type': 'special', 'options': {'match': 'null', 'result': {'text': '–'}}}]
+ai.add(ixt, 24, 7)
 
 ai.row('Latency: gen_ai.client.inference.duration')
 model_colors = [color_override('.*gemma.*', BLUE, True), color_override('.*gemini.*', ORANGE, True)]
 ai.add(series('p50 and p95 inference latency by model', [
-    target(f'histogram_quantile(0.50, sum by (le, gen_ai_request_model) (rate({INF}_bucket{{error_type=""}}[15m])))', 'p50 {{gen_ai_request_model}}', 'A'),
-    target(f'histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate({INF}_bucket{{error_type=""}}[15m])))', 'p95 {{gen_ai_request_model}}', 'B')],
+    target(f'histogram_quantile(0.50, sum by (le, gen_ai_request_model) (rate({INF}_bucket{{{OA}, error_type=""}}[15m])))', 'p50 {{gen_ai_request_model}}', 'A'),
+    target(f'histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate({INF}_bucket{{{OA}, error_type=""}}[15m])))', 'p95 {{gen_ai_request_model}}', 'B')],
     's', 'Successful calls only, rolling 15 minutes. The p95 line is dashed.',
     overrides=model_colors + [{'matcher': {'id': 'byRegexp', 'options': '^p95.*'},
                                'properties': [{'id': 'custom.lineStyle', 'value': {'fill': 'dash', 'dash': [10, 6]}}]}]), 14, 11, 0)
-ai.add(heatmap('Where model calls land, by bucket', f'sum by (le) (increase({INF}_bucket[$__rate_interval]))',
+ai.add(heatmap('Where model calls land, by bucket', f'sum by (le) (increase({INF}_bucket{{{OA}}}[$__rate_interval]))',
                'Every call, both models, in the histogram\'s own bucket boundaries (0.01 s to 81.92 s).'), 10, 11, 14)
 
 ai.row('Tokens and cost')
 ai.add(series('Tokens per minute, input and output', [
-    target(f'sum by (gen_ai_request_model, gen_ai_token_type) (rate({TOK}_sum[$__rate_interval])) * 60', '{{gen_ai_request_model}} {{gen_ai_token_type}}')],
+    target(f'sum by (gen_ai_request_model, gen_ai_token_type) (rate({TOK}_sum{{{OA}}}[$__rate_interval])) * 60', '{{gen_ai_request_model}} {{gen_ai_token_type}}')],
     'short', 'From gen_ai.client.token.usage, recorded once per model call.', stack=True,
     overrides=[color_override('.*gemma.*input', BLUE, True), color_override('.*gemma.*output', VIOLET, True),
                color_override('.*gemini.*input', ORANGE, True), color_override('.*gemini.*output', YELLOW, True)]), 12, 10, 0)
@@ -229,7 +268,7 @@ ai.add(series('Cost per hour at list price', [target(cost_expr('1h'), '{{gen_ai_
               'currencyUSD', 'Rolling one-hour token cost per model. List prices in prices.json next to this dashboard.',
               overrides=model_colors), 12, 10, 12)
 ai.add(series('Tokens per model call (average)', [
-    target(f'sum by (gen_ai_request_model, gen_ai_token_type) (rate({TOK}_sum[$__rate_interval])) / sum by (gen_ai_request_model, gen_ai_token_type) (rate({TOK}_count[$__rate_interval]))', '{{gen_ai_request_model}} {{gen_ai_token_type}}')],
+    target(f'sum by (gen_ai_request_model, gen_ai_token_type) (rate({TOK}_sum{{{OA}}}[$__rate_interval])) / sum by (gen_ai_request_model, gen_ai_token_type) (rate({TOK}_count{{{OA}}}[$__rate_interval]))', '{{gen_ai_request_model}} {{gen_ai_token_type}}')],
     'short', 'Tool results make input grow with each step of a run.',
     overrides=[color_override('.*gemma.*input', BLUE, True), color_override('.*gemma.*output', VIOLET, True),
                color_override('.*gemini.*input', ORANGE, True), color_override('.*gemini.*output', YELLOW, True)]), 12, 10, 0)
@@ -260,7 +299,7 @@ ai.add(series('Agent runs by outcome', [
     bars=True, stack=True, legend_calcs=('sum',),
     overrides=[color_override('ok', GOOD), color_override('timeout', YELLOW), color_override('error', RED)]), 8, 9, 0)
 ai.add(series('Failed model calls by error.type', [
-    target(f'sum by (error_type, gen_ai_request_model) (increase({INF}_count{{error_type!=""}}[$__rate_interval])) > 0', '{{gen_ai_request_model}} {{error_type}}')],
+    target(f'sum by (error_type, gen_ai_request_model) (increase({INF}_count{{{OA}, error_type!=""}}[$__rate_interval])) > 0', '{{gen_ai_request_model}} {{error_type}}')],
     'short', 'The inference histogram records failed calls too, with error.type set.', bars=True, stack=True, legend_calcs=('sum',),
     overrides=model_colors), 8, 9, 8)
 ai.add(series('Tool calls the model asked for', [
@@ -270,25 +309,25 @@ ai.add(series('Tool calls the model asked for', [
 
 ai.row('Spans from @ai-sdk/otel, turned into metrics by the Collector')
 ai.add(series('p95 duration from spans: runs, model calls, tools', [
-    target(f'histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate({SM}_bucket{{gen_ai_operation_name="invoke_agent"}}[15m])))', 'run {{gen_ai_request_model}}', 'A'),
-    target(f'histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate({SM}_bucket{{gen_ai_operation_name="chat"}}[15m])))', 'model call {{gen_ai_request_model}}', 'B'),
-    target(f'histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate({SM}_bucket{{gen_ai_operation_name="execute_tool"}}[15m])))', 'tool {{gen_ai_tool_name}}', 'C')],
+    target(f'histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate({SM}_bucket{{{OA}, gen_ai_operation_name="invoke_agent"}}[15m])))', 'run {{gen_ai_request_model}}', 'A'),
+    target(f'histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate({SM}_bucket{{{OA}, gen_ai_operation_name="chat"}}[15m])))', 'model call {{gen_ai_request_model}}', 'B'),
+    target(f'histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate({SM}_bucket{{{OA}, gen_ai_operation_name="execute_tool"}}[15m])))', 'tool {{gen_ai_tool_name}}', 'C')],
     's', 'The Collector\'s spanmetrics connector reads the invoke_agent, chat and execute_tool spans the AI SDK emits and writes duration histograms. Rolling 15 minutes. Dashed lines are model calls.',
     overrides=[color_override('.*gemma.*', BLUE, True), color_override('.*gemini.*', ORANGE, True),
                color_override('tool get_error_rate', AQUA), color_override('tool get_runbook', MAGENTA),
                {'matcher': {'id': 'byRegexp', 'options': '^model call.*'},
                 'properties': [{'id': 'custom.lineStyle', 'value': {'fill': 'dash', 'dash': [10, 6]}}]}]), 12, 11, 0)
 ai.add(series('Where a run\'s time goes', [
-    target(f'sum by (gen_ai_request_model) (rate({SM}_sum{{gen_ai_operation_name="chat"}}[15m])) / sum by (gen_ai_request_model) (rate({SM}_count{{gen_ai_operation_name="invoke_agent"}}[15m]))', 'in model calls, {{gen_ai_request_model}}', 'A'),
-    target(f'sum(rate({SM}_sum{{gen_ai_operation_name="execute_tool"}}[15m])) / sum(rate({SM}_count{{gen_ai_operation_name="invoke_agent"}}[15m]))', 'in tools, all models', 'B')],
+    target(f'sum by (gen_ai_request_model) (rate({SM}_sum{{{OA}, gen_ai_operation_name="chat"}}[15m])) / sum by (gen_ai_request_model) (rate({SM}_count{{{OA}, gen_ai_operation_name="invoke_agent"}}[15m]))', 'in model calls, {{gen_ai_request_model}}', 'A'),
+    target(f'sum(rate({SM}_sum{{{OA}, gen_ai_operation_name="execute_tool"}}[15m])) / sum(rate({SM}_count{{{OA}, gen_ai_operation_name="invoke_agent"}}[15m]))', 'in tools, all models', 'B')],
     's', 'Average seconds per run, from span durations. Model time is nearly all of it.',
     overrides=[color_override('.*gemma.*', BLUE, True), color_override('.*gemini.*', ORANGE, True), color_override('in tools, all models', AQUA)]), 6, 11, 12)
 ai.add(series('Model calls per run', [
-    target(f'sum by (gen_ai_request_model) (rate({SM}_count{{gen_ai_operation_name="chat"}}[30m])) / sum by (gen_ai_request_model) (rate({SM}_count{{gen_ai_operation_name="invoke_agent"}}[30m]))', '{{gen_ai_request_model}}')],
+    target(f'sum by (gen_ai_request_model) (rate({SM}_count{{{OA}, gen_ai_operation_name="chat"}}[30m])) / sum by (gen_ai_request_model) (rate({SM}_count{{{OA}, gen_ai_operation_name="invoke_agent"}}[30m]))', '{{gen_ai_request_model}}')],
     'short', 'chat spans per invoke_agent span, rolling 30 minutes. Each tool round trip adds a call.', overrides=model_colors), 6, 11, 18)
-Q = 'span_name="oncall_question", agent_task!=""'
+Q = 'span_name="oncall_question", agent_task!=""'  # only the on-call agent writes this span
 ai.add(series('p95 run time by kind of question', [
-    target(f'histogram_quantile(0.95, sum by (le, agent_task) (rate({SM}_bucket{{{Q}}}[30m])))', '{{agent_task}}')],
+    target(f'histogram_quantile(0.95, sum by (le, agent_task) (rate({SM}_bucket{{{OA}, {Q}}}[30m])))', '{{agent_task}}')],
     's', 'From the agent\'s oncall_question span, which wraps a whole run. Rolling 30 minutes. Questions that need a tool and a runbook take more round trips.'), 12, 9, 0)
 ai.add(series('Runs by kind of question and outcome', [
     target(f'sum by (agent_task, agent_outcome) (increase(traces_span_metrics_calls_total{{{Q}}}[$__rate_interval])) > 0', '{{agent_task}} {{agent_outcome}}')],
@@ -309,10 +348,10 @@ if not UID:
                         '', 'Slow runs, counted from spans. Signed in, each bar links to the traces behind it.'), 8, 9, 16)
 
 ERRORS = {'datasource': DS, 'enable': True, 'iconColor': RED, 'name': 'Model call failed, not the deadline',
-          'expr': f'sum by (gen_ai_request_model, error_type) (increase({INF}_count{{error_type!="", error_type!~"TimeoutError|AbortError"}}[2m])) > 0',
+          'expr': f'sum by (gen_ai_request_model, error_type) (increase({INF}_count{{{OA}, error_type!="", error_type!~"TimeoutError|AbortError"}}[2m])) > 0',
           'step': '2m', 'titleFormat': '{{gen_ai_request_model}} {{error_type}}', 'textFormat': 'model call failed', 'useValueForTime': False}
 ai_json = dashboard('ai-agent-genai-otel', 'AI agent: latency, tokens and cost from @ai-sdk/otel',
-                    'gen_ai.client.inference.duration from @ai-sdk/otel, plus token usage and list-price cost, for an AI SDK agent on two models.',
+                    'gen_ai.client.inference.duration from @ai-sdk/otel, plus token usage and list-price cost, for two AI SDK services: an on-call agent on two models, and a fix explainer for react-inp-blame on its live demo.',
                     ['ai-sdk', 'opentelemetry', 'gen-ai', 'golden-grot'],
                     collapse(ai.panels, {'Tokens and cost', 'The agent loop', "Spans from @ai-sdk/otel, turned into metrics by the Collector", 'Which runs, from the traces in Tempo'}),
                     annotations=[ERRORS])

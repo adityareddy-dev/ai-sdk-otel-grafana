@@ -1,0 +1,1 @@
+The demo's anti-pattern lab components, copied from [react-inp-blame](https://github.com/adityareddy-dev/react-inp-blame) at `ea73e5d` (`apps/demo/src/scenarios` and `burn.ts`, MIT). The explainer's `get_component_source` tool reads these, so the model sees the code that runs on reactinpblame.com.

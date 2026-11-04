@@ -26,3 +26,28 @@ services:
     depends_on:
       collector: { condition: service_started }
       install: { condition: service_completed_successfully }
+
+  # The fix explainer for react-inp-blame: a headless Chrome makes the live
+  # demo's slow interactions, and a model on the AI SDK explains each report.
+  install-explainer:
+    image: node:24-slim
+    working_dir: /app
+    command: ["npm", "ci", "--no-audit", "--no-fund"]
+    environment:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    volumes: ["./explainer:/app"]
+
+  explainer:
+    image: mcr.microsoft.com/playwright:v1.63.0-noble
+    restart: unless-stopped
+    init: true
+    shm_size: 1gb
+    working_dir: /app
+    command: ["node", "explainer.mjs"]
+    env_file: .env
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://collector:4318
+    volumes: ["./explainer:/app:ro"]
+    depends_on:
+      collector: { condition: service_started }
+      install-explainer: { condition: service_completed_successfully }

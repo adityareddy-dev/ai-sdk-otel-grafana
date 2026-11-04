@@ -1,7 +1,7 @@
 {
   "uid": "ai-agent-genai-otel",
   "title": "AI agent: latency, tokens and cost from @ai-sdk/otel",
-  "description": "gen_ai.client.inference.duration from @ai-sdk/otel, plus token usage and list-price cost, for an AI SDK agent on two models.",
+  "description": "gen_ai.client.inference.duration from @ai-sdk/otel, plus token usage and list-price cost, for two AI SDK services: an on-call agent on two models, and a fix explainer for react-inp-blame on its live demo.",
   "tags": [
     "ai-sdk",
     "opentelemetry",
@@ -40,7 +40,7 @@
         "enable": true,
         "iconColor": "#e66767",
         "name": "Model call failed, not the deadline",
-        "expr": "sum by (gen_ai_request_model, error_type) (increase(gen_ai_client_inference_duration_seconds_count{error_type!=\"\", error_type!~\"TimeoutError|AbortError\"}[2m])) > 0",
+        "expr": "sum by (gen_ai_request_model, error_type) (increase(gen_ai_client_inference_duration_seconds_count{service_name=\"oncall-agent\", error_type!=\"\", error_type!~\"TimeoutError|AbortError\"}[2m])) > 0",
         "step": "2m",
         "titleFormat": "{{gen_ai_request_model}} {{error_type}}",
         "textFormat": "model call failed",
@@ -55,7 +55,7 @@
       "title": "",
       "options": {
         "mode": "markdown",
-        "content": "### An AI agent, measured with the AI SDK's own OpenTelemetry metric\nA small on-call helper agent built on the [AI SDK](https://ai-sdk.dev) answers questions about a shop with two tools. It runs around the clock on two models through the Gemini API free tier: Gemini 3.5 Flash-Lite and the open-weights Gemma 4 26B. Latency comes from `gen_ai.client.inference.duration`, the histogram [@ai-sdk/otel](https://www.npmjs.com/package/@ai-sdk/otel) records for every model call. I asked for it in [vercel/ai#24229](https://github.com/vercel/ai/issues/24229) and it shipped in @ai-sdk/otel 1.0.160. Tokens come from the semconv `gen_ai.client.token.usage` histogram. Cost is tokens times each model's list price, so it shows what this traffic would cost on the paid tier. Gemma has no paid price, so its cost is zero. Prices as of November 3, 2026."
+        "content": "### Two AI SDK services, measured with the AI SDK's own OpenTelemetry metric\nA small on-call helper agent built on the [AI SDK](https://ai-sdk.dev) answers questions about a shop with two tools. It runs around the clock on two models through the Gemini API free tier: Gemini 3.5 Flash-Lite and the open-weights Gemma 4 26B. Latency comes from `gen_ai.client.inference.duration`, the histogram [@ai-sdk/otel](https://www.npmjs.com/package/@ai-sdk/otel) records for every model call. I asked for it in [vercel/ai#24229](https://github.com/vercel/ai/issues/24229) and it shipped in @ai-sdk/otel 1.0.160. Tokens come from the semconv `gen_ai.client.token.usage` histogram. Cost is tokens times each model's list price, so it shows what this traffic would cost on the paid tier. Gemma has no paid price, so its cost is zero. Prices as of November 3, 2026. Further down, the second service runs a real workload: a fix explainer for my react-inp-blame library, on its live demo."
       },
       "datasource": {
         "type": "prometheus",
@@ -85,7 +85,7 @@
     },
     {
       "type": "row",
-      "title": "Right now",
+      "title": "The on-call agent, right now",
       "collapsed": false,
       "panels": [],
       "id": 2,
@@ -248,7 +248,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gen_ai_client_inference_duration_seconds_bucket[1h])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gen_ai_client_inference_duration_seconds_bucket{service_name=\"oncall-agent\"}[1h])))",
           "legendFormat": "__auto",
           "refId": "A",
           "range": false,
@@ -312,7 +312,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(increase(gen_ai_client_inference_duration_seconds_count{error_type!=\"\"}[1h])) / sum(increase(gen_ai_client_inference_duration_seconds_count[1h]))",
+          "expr": "sum(increase(gen_ai_client_inference_duration_seconds_count{service_name=\"oncall-agent\", error_type!=\"\"}[1h])) / sum(increase(gen_ai_client_inference_duration_seconds_count{service_name=\"oncall-agent\"}[1h]))",
           "legendFormat": "__auto",
           "refId": "A",
           "range": false,
@@ -383,7 +383,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(sum by (gen_ai_request_model) (\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"input\"}[1h])) * 3e-07)\n  or\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"output\"}[1h])) * 2.5e-06)\n)) * 24 * 30",
+          "expr": "sum(sum by (gen_ai_request_model) (\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"input\"}[1h])) * 3e-07)\n  or\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"output\"}[1h])) * 2.5e-06)\n)) * 24 * 30",
           "legendFormat": "__auto",
           "refId": "A",
           "range": false,
@@ -467,7 +467,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate(gen_ai_client_inference_duration_seconds_bucket{error_type=\"\"}[6h])))",
+          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate(gen_ai_client_inference_duration_seconds_bucket{service_name=\"oncall-agent\", error_type=\"\"}[6h])))",
           "legendFormat": "__auto",
           "refId": "A",
           "range": false,
@@ -479,7 +479,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_bucket{gen_ai_operation_name=\"invoke_agent\"}[6h])))",
+          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_bucket{service_name=\"oncall-agent\", gen_ai_operation_name=\"invoke_agent\"}[6h])))",
           "legendFormat": "__auto",
           "refId": "B",
           "range": false,
@@ -527,7 +527,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum[6h])) / sum by (gen_ai_request_model) (increase(agent_runs_total[6h]))",
+          "expr": "sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\"}[6h])) / sum by (gen_ai_request_model) (increase(agent_runs_total[6h]))",
           "legendFormat": "__auto",
           "refId": "F",
           "range": false,
@@ -539,7 +539,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "((sum by (gen_ai_request_model) (\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"input\"}[6h])) * 3e-07)\n  or\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"output\"}[6h])) * 2.5e-06)\n)) or (sum by (gen_ai_request_model) (increase(agent_runs_total[6h])) * 0)) / sum by (gen_ai_request_model) (increase(agent_runs_total[6h])) * 1000",
+          "expr": "((sum by (gen_ai_request_model) (\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"input\"}[6h])) * 3e-07)\n  or\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"output\"}[6h])) * 2.5e-06)\n)) or (sum by (gen_ai_request_model) (increase(agent_runs_total[6h])) * 0)) / sum by (gen_ai_request_model) (increase(agent_runs_total[6h])) * 1000",
           "legendFormat": "__auto",
           "refId": "G",
           "range": false,
@@ -735,13 +735,653 @@
     },
     {
       "type": "row",
-      "title": "Latency: gen_ai.client.inference.duration",
+      "title": "A real workload: the fix explainer for react-inp-blame",
       "collapsed": false,
       "panels": [],
       "id": 10,
       "gridPos": {
         "x": 0,
         "y": 15,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "text",
+      "title": "",
+      "options": {
+        "mode": "markdown",
+        "content": "[react-inp-blame](https://github.com/adityareddy-dev/react-inp-blame) is my library that says which React component made a click slow. Here a headless Chrome opens its live demo at [reactinpblame.com](https://reactinpblame.com), makes one of the demo's slow interactions, and reads the report the library writes. A model on the AI SDK (Gemini 3.1 Flash-Lite, Gemini API free tier) gets that report, reads the component's source with one tool, and says why the interaction was slow and what to change. Every answer is checked against the library's own blame and against the fix the demo documents, which the model never sees. Same instrumentation as the agent above: `gen_ai.client.inference.duration` from @ai-sdk/otel, token usage, and spans through the Collector."
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "vector(1)",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "transparent": true,
+      "id": 11,
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 24,
+        "h": 3
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Explanations, last hour",
+      "description": "Interactions measured on the live demo and explained. Zero means it stopped.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(inp_explainer_runs_total{outcome=\"ok\"}[1h]))",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#e66767",
+                "value": null
+              },
+              {
+                "color": "#199e70",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 12,
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 5,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Named the component the library blamed, last 6 hours",
+      "description": "The answer names the component, handler or child react-inp-blame put the time on.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(inp_explainer_checks_total{check=\"named_culprit\", result=\"pass\"}[6h])) / sum(increase(inp_explainer_checks_total{check=\"named_culprit\"}[6h]))",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#e66767",
+                "value": null
+              },
+              {
+                "color": "#c98500",
+                "value": 0.7
+              },
+              {
+                "color": "#199e70",
+                "value": 0.9
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 13,
+      "gridPos": {
+        "x": 5,
+        "y": 19,
+        "w": 5,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Gave the fix the demo documents, last 6 hours",
+      "description": "The answer proposes the fix the demo's lab page lists for that interaction (useMemo, virtualise, move state down, a worker, and so on). The model never sees that page.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(inp_explainer_checks_total{check=\"right_fix\", result=\"pass\"}[6h])) / sum(increase(inp_explainer_checks_total{check=\"right_fix\"}[6h]))",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#e66767",
+                "value": null
+              },
+              {
+                "color": "#c98500",
+                "value": 0.7
+              },
+              {
+                "color": "#199e70",
+                "value": 0.9
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 14,
+      "gridPos": {
+        "x": 10,
+        "y": 19,
+        "w": 5,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "p95 model call, last hour",
+      "description": "gen_ai.client.inference.duration from @ai-sdk/otel, for the explainer only.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(gen_ai_client_inference_duration_seconds_bucket{service_name=\"react-inp-blame-explainer\"}[1h])))",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3987e5",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 15,
+      "gridPos": {
+        "x": 15,
+        "y": 19,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "p95 to explain one interaction, last hour",
+      "description": "From the explain_interaction span: measuring the click in Chrome, reading the source and writing the answer.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_seconds_bucket{service_name=\"react-inp-blame-explainer\", span_name=\"explain_interaction\", agent_outcome=\"ok\"}[1h])))",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3987e5",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 16,
+      "gridPos": {
+        "x": 19,
+        "y": 19,
+        "w": 5,
+        "h": 4
+      }
+    },
+    {
+      "type": "table",
+      "title": "Each slow interaction on the live demo, last 6 hours",
+      "description": "One row per interaction in the demo's anti-pattern lab. Read across: how slow the click really was, how long the explanation took, and whether it got the cause and the fix right.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le, agent_task) (rate(inp_explainer_interaction_duration_seconds_bucket[6h])))",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, agent_task) (rate(traces_span_metrics_duration_seconds_bucket{service_name=\"react-inp-blame-explainer\", span_name=\"explain_interaction\", agent_outcome=\"ok\"}[6h])))",
+          "legendFormat": "__auto",
+          "refId": "B",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (agent_task) (increase(inp_explainer_checks_total{check=\"read_source\", result=\"pass\"}[6h])) / sum by (agent_task) (increase(inp_explainer_checks_total{check=\"read_source\"}[6h]))",
+          "legendFormat": "__auto",
+          "refId": "C",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (agent_task) (increase(inp_explainer_checks_total{check=\"named_culprit\", result=\"pass\"}[6h])) / sum by (agent_task) (increase(inp_explainer_checks_total{check=\"named_culprit\"}[6h]))",
+          "legendFormat": "__auto",
+          "refId": "D",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (agent_task) (increase(inp_explainer_checks_total{check=\"right_fix\", result=\"pass\"}[6h])) / sum by (agent_task) (increase(inp_explainer_checks_total{check=\"right_fix\"}[6h]))",
+          "legendFormat": "__auto",
+          "refId": "E",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (agent_task) (increase(gen_ai_client_token_usage_sum{service_name=\"react-inp-blame-explainer\"}[6h])) / sum by (agent_task) (increase(inp_explainer_runs_total{outcome=\"ok\"}[6h]))",
+          "legendFormat": "__auto",
+          "refId": "F",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value #A": "Measured in Chrome (median)",
+              "Value #B": "p95 to explain",
+              "Value #C": "Read the source",
+              "Value #D": "Named the culprit",
+              "Value #E": "Right fix",
+              "Value #F": "Tokens per explanation",
+              "agent_task": "Interaction"
+            },
+            "indexByName": {
+              "agent_task": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4,
+              "Value #E": 5,
+              "Value #F": 6
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "\u2013"
+                }
+              }
+            },
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "\u2013"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Measured in Chrome (median)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p95 to explain"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Read the source"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Named the culprit"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Right fix"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Tokens per explanation"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "md",
+        "footer": {
+          "show": false
+        }
+      },
+      "id": 17,
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 24,
+        "h": 7
+      }
+    },
+    {
+      "type": "row",
+      "title": "Latency: gen_ai.client.inference.duration",
+      "collapsed": false,
+      "panels": [],
+      "id": 18,
+      "gridPos": {
+        "x": 0,
+        "y": 30,
         "w": 24,
         "h": 1
       }
@@ -760,7 +1400,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.50, sum by (le, gen_ai_request_model) (rate(gen_ai_client_inference_duration_seconds_bucket{error_type=\"\"}[15m])))",
+          "expr": "histogram_quantile(0.50, sum by (le, gen_ai_request_model) (rate(gen_ai_client_inference_duration_seconds_bucket{service_name=\"oncall-agent\", error_type=\"\"}[15m])))",
           "legendFormat": "p50 {{gen_ai_request_model}}",
           "refId": "A",
           "range": true
@@ -770,7 +1410,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate(gen_ai_client_inference_duration_seconds_bucket{error_type=\"\"}[15m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate(gen_ai_client_inference_duration_seconds_bucket{service_name=\"oncall-agent\", error_type=\"\"}[15m])))",
           "legendFormat": "p95 {{gen_ai_request_model}}",
           "refId": "B",
           "range": true
@@ -863,10 +1503,10 @@
           "sort": "desc"
         }
       },
-      "id": 11,
+      "id": 19,
       "gridPos": {
         "x": 0,
-        "y": 16,
+        "y": 31,
         "w": 14,
         "h": 11
       }
@@ -885,7 +1525,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (le) (increase(gen_ai_client_inference_duration_seconds_bucket[$__rate_interval]))",
+          "expr": "sum by (le) (increase(gen_ai_client_inference_duration_seconds_bucket{service_name=\"oncall-agent\"}[$__rate_interval]))",
           "legendFormat": "{{le}}",
           "refId": "A",
           "range": true,
@@ -924,10 +1564,10 @@
         "defaults": {},
         "overrides": []
       },
-      "id": 12,
+      "id": 20,
       "gridPos": {
         "x": 14,
-        "y": 16,
+        "y": 31,
         "w": 10,
         "h": 11
       }
@@ -951,7 +1591,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum by (gen_ai_request_model, gen_ai_token_type) (rate(gen_ai_client_token_usage_sum[$__rate_interval])) * 60",
+              "expr": "sum by (gen_ai_request_model, gen_ai_token_type) (rate(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\"}[$__rate_interval])) * 60",
               "legendFormat": "{{gen_ai_request_model}} {{gen_ai_token_type}}",
               "refId": "A",
               "range": true
@@ -1056,10 +1696,10 @@
               "sort": "desc"
             }
           },
-          "id": 14,
+          "id": 22,
           "gridPos": {
             "x": 0,
-            "y": 28,
+            "y": 43,
             "w": 12,
             "h": 10
           }
@@ -1078,7 +1718,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum by (gen_ai_request_model) (\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"input\"}[1h])) * 3e-07)\n  or\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"output\"}[1h])) * 2.5e-06)\n)",
+              "expr": "sum by (gen_ai_request_model) (\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"input\"}[1h])) * 3e-07)\n  or\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"output\"}[1h])) * 2.5e-06)\n)",
               "legendFormat": "{{gen_ai_request_model}}",
               "refId": "A",
               "range": true
@@ -1153,10 +1793,10 @@
               "sort": "desc"
             }
           },
-          "id": 15,
+          "id": 23,
           "gridPos": {
             "x": 12,
-            "y": 28,
+            "y": 43,
             "w": 12,
             "h": 10
           }
@@ -1175,7 +1815,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum by (gen_ai_request_model, gen_ai_token_type) (rate(gen_ai_client_token_usage_sum[$__rate_interval])) / sum by (gen_ai_request_model, gen_ai_token_type) (rate(gen_ai_client_token_usage_count[$__rate_interval]))",
+              "expr": "sum by (gen_ai_request_model, gen_ai_token_type) (rate(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\"}[$__rate_interval])) / sum by (gen_ai_request_model, gen_ai_token_type) (rate(gen_ai_client_token_usage_count{service_name=\"oncall-agent\"}[$__rate_interval]))",
               "legendFormat": "{{gen_ai_request_model}} {{gen_ai_token_type}}",
               "refId": "A",
               "range": true
@@ -1280,10 +1920,10 @@
               "sort": "desc"
             }
           },
-          "id": 16,
+          "id": 24,
           "gridPos": {
             "x": 0,
-            "y": 38,
+            "y": 53,
             "w": 12,
             "h": 10
           }
@@ -1302,7 +1942,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum by (gen_ai_request_model) (\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"input\"}[1h])) * 3e-07)\n  or\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"output\"}[1h])) * 2.5e-06)\n) / sum by (gen_ai_request_model) (increase(agent_runs_total[1h]))",
+              "expr": "sum by (gen_ai_request_model) (\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"input\"}[1h])) * 3e-07)\n  or\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"output\"}[1h])) * 2.5e-06)\n) / sum by (gen_ai_request_model) (increase(agent_runs_total[1h]))",
               "legendFormat": "{{gen_ai_request_model}}",
               "refId": "A",
               "range": true
@@ -1377,19 +2017,19 @@
               "sort": "desc"
             }
           },
-          "id": 17,
+          "id": 25,
           "gridPos": {
             "x": 12,
-            "y": 38,
+            "y": 53,
             "w": 12,
             "h": 10
           }
         }
       ],
-      "id": 13,
+      "id": 21,
       "gridPos": {
         "x": 0,
-        "y": 27,
+        "y": 42,
         "w": 24,
         "h": 1
       }
@@ -1399,10 +2039,10 @@
       "title": "Doing what it was asked, within budget",
       "collapsed": false,
       "panels": [],
-      "id": 18,
+      "id": 26,
       "gridPos": {
         "x": 0,
-        "y": 48,
+        "y": 63,
         "w": 24,
         "h": 1
       }
@@ -1513,10 +2153,10 @@
           "sort": "desc"
         }
       },
-      "id": 19,
+      "id": 27,
       "gridPos": {
         "x": 0,
-        "y": 49,
+        "y": 64,
         "w": 9,
         "h": 10
       }
@@ -1580,10 +2220,10 @@
           "sort": "desc"
         }
       },
-      "id": 20,
+      "id": 28,
       "gridPos": {
         "x": 9,
-        "y": 49,
+        "y": 64,
         "w": 9,
         "h": 10
       }
@@ -1602,7 +2242,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(sum by (gen_ai_request_model) (\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"input\"}[24h])) * 3e-07)\n  or\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"output\"}[24h])) * 2.5e-06)\n)) / 1.0",
+          "expr": "sum(sum by (gen_ai_request_model) (\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"input\"}[24h])) * 3e-07)\n  or\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"output\"}[24h])) * 2.5e-06)\n)) / 1.0",
           "legendFormat": "__auto",
           "refId": "A",
           "range": false,
@@ -1651,10 +2291,10 @@
         "wideLayout": true,
         "showPercentChange": false
       },
-      "id": 21,
+      "id": 29,
       "gridPos": {
         "x": 18,
-        "y": 49,
+        "y": 64,
         "w": 6,
         "h": 5
       }
@@ -1673,7 +2313,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(sum by (gen_ai_request_model) (\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"input\"}[6h])) * 3e-07)\n  or\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"output\"}[6h])) * 2.5e-06)\n)) / sum(increase(agent_runs_total[6h])) * 1000",
+          "expr": "sum(sum by (gen_ai_request_model) (\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"input\"}[6h])) * 3e-07)\n  or\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"output\"}[6h])) * 2.5e-06)\n)) / sum(increase(agent_runs_total[6h])) * 1000",
           "legendFormat": "__auto",
           "refId": "A",
           "range": false,
@@ -1715,10 +2355,10 @@
         "wideLayout": true,
         "showPercentChange": false
       },
-      "id": 22,
+      "id": 30,
       "gridPos": {
         "x": 18,
-        "y": 54,
+        "y": 69,
         "w": 6,
         "h": 5
       }
@@ -1831,10 +2471,10 @@
               "sort": "desc"
             }
           },
-          "id": 24,
+          "id": 32,
           "gridPos": {
             "x": 0,
-            "y": 60,
+            "y": 75,
             "w": 8,
             "h": 9
           }
@@ -1853,7 +2493,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum by (error_type, gen_ai_request_model) (increase(gen_ai_client_inference_duration_seconds_count{error_type!=\"\"}[$__rate_interval])) > 0",
+              "expr": "sum by (error_type, gen_ai_request_model) (increase(gen_ai_client_inference_duration_seconds_count{service_name=\"oncall-agent\", error_type!=\"\"}[$__rate_interval])) > 0",
               "legendFormat": "{{gen_ai_request_model}} {{error_type}}",
               "refId": "A",
               "range": true
@@ -1927,10 +2567,10 @@
               "sort": "desc"
             }
           },
-          "id": 25,
+          "id": 33,
           "gridPos": {
             "x": 8,
-            "y": 60,
+            "y": 75,
             "w": 8,
             "h": 9
           }
@@ -2023,19 +2663,19 @@
               "sort": "desc"
             }
           },
-          "id": 26,
+          "id": 34,
           "gridPos": {
             "x": 16,
-            "y": 60,
+            "y": 75,
             "w": 8,
             "h": 9
           }
         }
       ],
-      "id": 23,
+      "id": 31,
       "gridPos": {
         "x": 0,
-        "y": 59,
+        "y": 74,
         "w": 24,
         "h": 1
       }
@@ -2059,7 +2699,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_bucket{gen_ai_operation_name=\"invoke_agent\"}[15m])))",
+              "expr": "histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_bucket{service_name=\"oncall-agent\", gen_ai_operation_name=\"invoke_agent\"}[15m])))",
               "legendFormat": "run {{gen_ai_request_model}}",
               "refId": "A",
               "range": true
@@ -2069,7 +2709,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_bucket{gen_ai_operation_name=\"chat\"}[15m])))",
+              "expr": "histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_bucket{service_name=\"oncall-agent\", gen_ai_operation_name=\"chat\"}[15m])))",
               "legendFormat": "model call {{gen_ai_request_model}}",
               "refId": "B",
               "range": true
@@ -2079,7 +2719,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate(traces_span_metrics_duration_seconds_bucket{gen_ai_operation_name=\"execute_tool\"}[15m])))",
+              "expr": "histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate(traces_span_metrics_duration_seconds_bucket{service_name=\"oncall-agent\", gen_ai_operation_name=\"execute_tool\"}[15m])))",
               "legendFormat": "tool {{gen_ai_tool_name}}",
               "refId": "C",
               "range": true
@@ -2202,10 +2842,10 @@
               "sort": "desc"
             }
           },
-          "id": 28,
+          "id": 36,
           "gridPos": {
             "x": 0,
-            "y": 70,
+            "y": 85,
             "w": 12,
             "h": 11
           }
@@ -2224,7 +2864,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum by (gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_sum{gen_ai_operation_name=\"chat\"}[15m])) / sum by (gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_count{gen_ai_operation_name=\"invoke_agent\"}[15m]))",
+              "expr": "sum by (gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_sum{service_name=\"oncall-agent\", gen_ai_operation_name=\"chat\"}[15m])) / sum by (gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_count{service_name=\"oncall-agent\", gen_ai_operation_name=\"invoke_agent\"}[15m]))",
               "legendFormat": "in model calls, {{gen_ai_request_model}}",
               "refId": "A",
               "range": true
@@ -2234,7 +2874,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum(rate(traces_span_metrics_duration_seconds_sum{gen_ai_operation_name=\"execute_tool\"}[15m])) / sum(rate(traces_span_metrics_duration_seconds_count{gen_ai_operation_name=\"invoke_agent\"}[15m]))",
+              "expr": "sum(rate(traces_span_metrics_duration_seconds_sum{service_name=\"oncall-agent\", gen_ai_operation_name=\"execute_tool\"}[15m])) / sum(rate(traces_span_metrics_duration_seconds_count{service_name=\"oncall-agent\", gen_ai_operation_name=\"invoke_agent\"}[15m]))",
               "legendFormat": "in tools, all models",
               "refId": "B",
               "range": true
@@ -2324,10 +2964,10 @@
               "sort": "desc"
             }
           },
-          "id": 29,
+          "id": 37,
           "gridPos": {
             "x": 12,
-            "y": 70,
+            "y": 85,
             "w": 6,
             "h": 11
           }
@@ -2346,7 +2986,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "sum by (gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_count{gen_ai_operation_name=\"chat\"}[30m])) / sum by (gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_count{gen_ai_operation_name=\"invoke_agent\"}[30m]))",
+              "expr": "sum by (gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_count{service_name=\"oncall-agent\", gen_ai_operation_name=\"chat\"}[30m])) / sum by (gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_count{service_name=\"oncall-agent\", gen_ai_operation_name=\"invoke_agent\"}[30m]))",
               "legendFormat": "{{gen_ai_request_model}}",
               "refId": "A",
               "range": true
@@ -2421,10 +3061,10 @@
               "sort": "desc"
             }
           },
-          "id": 30,
+          "id": 38,
           "gridPos": {
             "x": 18,
-            "y": 70,
+            "y": 85,
             "w": 6,
             "h": 11
           }
@@ -2443,7 +3083,7 @@
                 "type": "prometheus",
                 "uid": "${datasource}"
               },
-              "expr": "histogram_quantile(0.95, sum by (le, agent_task) (rate(traces_span_metrics_duration_seconds_bucket{span_name=\"oncall_question\", agent_task!=\"\"}[30m])))",
+              "expr": "histogram_quantile(0.95, sum by (le, agent_task) (rate(traces_span_metrics_duration_seconds_bucket{service_name=\"oncall-agent\", span_name=\"oncall_question\", agent_task!=\"\"}[30m])))",
               "legendFormat": "{{agent_task}}",
               "refId": "A",
               "range": true
@@ -2487,10 +3127,10 @@
               "sort": "desc"
             }
           },
-          "id": 31,
+          "id": 39,
           "gridPos": {
             "x": 0,
-            "y": 81,
+            "y": 96,
             "w": 12,
             "h": 9
           }
@@ -2552,19 +3192,19 @@
               "sort": "desc"
             }
           },
-          "id": 32,
+          "id": 40,
           "gridPos": {
             "x": 12,
-            "y": 81,
+            "y": 96,
             "w": 12,
             "h": 9
           }
         }
       ],
-      "id": 27,
+      "id": 35,
       "gridPos": {
         "x": 0,
-        "y": 69,
+        "y": 84,
         "w": 24,
         "h": 1
       }
@@ -2634,10 +3274,10 @@
               "sort": "desc"
             }
           },
-          "id": 34,
+          "id": 42,
           "gridPos": {
             "x": 0,
-            "y": 91,
+            "y": 106,
             "w": 8,
             "h": 9
           }
@@ -2702,10 +3342,10 @@
               "sort": "desc"
             }
           },
-          "id": 35,
+          "id": 43,
           "gridPos": {
             "x": 8,
-            "y": 91,
+            "y": 106,
             "w": 8,
             "h": 9
           }
@@ -2770,19 +3410,19 @@
               "sort": "desc"
             }
           },
-          "id": 36,
+          "id": 44,
           "gridPos": {
             "x": 16,
-            "y": 91,
+            "y": 106,
             "w": 8,
             "h": 9
           }
         }
       ],
-      "id": 33,
+      "id": 41,
       "gridPos": {
         "x": 0,
-        "y": 90,
+        "y": 105,
         "w": 24,
         "h": 1
       }
