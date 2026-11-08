@@ -14,16 +14,12 @@ connectors:
     histogram:
       unit: s
       explicit:
-        buckets: [50ms, 100ms, 250ms, 500ms, 1s, 2s, 4s, 8s, 16s, 32s, 64s]
+        buckets: [100ms, 1s, 8s, 32s, 90s]
     dimensions:
       - name: gen_ai.operation.name
       - name: gen_ai.request.model
       - name: gen_ai.tool.name
-      # On the agent's own oncall_question span, so runs can be split by kind of
-      # question and outcome without a traces backend.
-      - name: agent.task
-      - name: agent.outcome
-    metrics_flush_interval: 15s
+    metrics_flush_interval: 60s
 
 exporters:
   otlp_http:

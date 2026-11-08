@@ -4,22 +4,24 @@ services:
     image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.160.0
     restart: unless-stopped
     command: ["--config=/etc/otelcol/config.yaml"]
-    env_file: .env
+    env_file: ${DEMO_ENV_FILE:-.env}
     volumes:
       - ./collector.yaml:/etc/otelcol/config.yaml:ro
 
   install:
+    profiles: [reference]
     image: node:24-slim
     working_dir: /app
     command: ["npm", "ci", "--no-audit", "--no-fund"]
     volumes: ["./agent:/app"]
 
   agent:
+    profiles: [reference]
     image: node:24-slim
     restart: unless-stopped
     working_dir: /app
     command: ["node", "agent.mjs"]
-    env_file: .env
+    env_file: ${DEMO_ENV_FILE:-.env}
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://collector:4318
     volumes: ["./agent:/app:ro"]
@@ -44,10 +46,13 @@ services:
     shm_size: 1gb
     working_dir: /app
     command: ["node", "explainer.mjs"]
-    env_file: .env
+    env_file: ${DEMO_ENV_FILE:-.env}
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://collector:4318
-    volumes: ["./explainer:/app:ro"]
+    volumes: ["./explainer:/app:ro", "explainer-state:/state"]
     depends_on:
       collector: { condition: service_started }
       install-explainer: { condition: service_completed_successfully }
+
+volumes:
+  explainer-state: {}

@@ -1,11 +1,11 @@
 {
   "uid": "ai-agent-genai-otel",
-  "title": "AI agent: latency, tokens and cost from @ai-sdk/otel",
-  "description": "gen_ai.client.inference.duration from @ai-sdk/otel, plus token usage and list-price cost, for two AI SDK services: an on-call agent on two models, and a fix explainer for react-inp-blame on its live demo.",
+  "title": "React interaction explainer: source, checks and timing",
+  "description": "Measured demo interactions and source-backed suggestion checks. No suggested change has been applied or benchmarked.",
   "tags": [
     "ai-sdk",
     "opentelemetry",
-    "gen-ai",
+    "react-inp-blame",
     "golden-grot"
   ],
   "timezone": "browser",
@@ -31,75 +31,14 @@
     ]
   },
   "annotations": {
-    "list": [
-      {
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${datasource}"
-        },
-        "enable": true,
-        "iconColor": "#e66767",
-        "name": "Model call failed, not the deadline",
-        "expr": "sum by (gen_ai_request_model, error_type) (increase(gen_ai_client_inference_duration_seconds_count{service_name=\"oncall-agent\", error_type!=\"\", error_type!~\"TimeoutError|AbortError\"}[2m])) > 0",
-        "step": "2m",
-        "titleFormat": "{{gen_ai_request_model}} {{error_type}}",
-        "textFormat": "model call failed",
-        "useValueForTime": false
-      }
-    ]
+    "list": []
   },
   "links": [],
   "panels": [
     {
-      "type": "text",
-      "title": "",
-      "options": {
-        "mode": "markdown",
-        "content": "### Two AI SDK services, measured with the AI SDK's own OpenTelemetry metric\nA small on-call helper agent built on the [AI SDK](https://ai-sdk.dev) answers questions about a shop with two tools. It runs around the clock on two models through the Gemini API free tier: Gemini 3.5 Flash-Lite and the open-weights Gemma 4 26B. Latency comes from `gen_ai.client.inference.duration`, the histogram [@ai-sdk/otel](https://www.npmjs.com/package/@ai-sdk/otel) records for every model call. I asked for it in [vercel/ai#24229](https://github.com/vercel/ai/issues/24229) and it shipped in @ai-sdk/otel 1.0.160. Tokens come from the semconv `gen_ai.client.token.usage` histogram. Cost is tokens times each model's list price, so it shows what this traffic would cost on the paid tier. Gemma has no paid price, so its cost is zero. Prices as of November 3, 2026. Further down, the second service runs a real workload: a fix explainer for my react-inp-blame library, on its live demo."
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "vector(1)",
-          "legendFormat": "__auto",
-          "refId": "A",
-          "range": false,
-          "instant": true
-        }
-      ],
-      "transparent": true,
-      "id": 1,
-      "gridPos": {
-        "x": 0,
-        "y": 0,
-        "w": 24,
-        "h": 4
-      }
-    },
-    {
-      "type": "row",
-      "title": "The on-call agent, right now",
-      "collapsed": false,
-      "panels": [],
-      "id": 2,
-      "gridPos": {
-        "x": 0,
-        "y": 4,
-        "w": 24,
-        "h": 1
-      }
-    },
-    {
       "type": "stat",
-      "title": "Runs finished, last 15 minutes",
-      "description": "Zero means the agent has stopped. Every model runs its own loop, so a stuck model shows up here.",
+      "title": "Source-backed suggestions, last hour",
+      "description": "No data: no completed response in 24h. Stale: latest response >20m, telemetry >3m or no recent attempts. Needs attention: an attempt did not pass every check. Checks passed: every recent attempt passed. These are automated checks, not proof of a faster fix.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -110,7 +49,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(increase(agent_runs_total[15m]))",
+          "expr": "(((2 + (sum(increase(inp_explainer_runs_total{outcome=\"passed\"}[1h])) >= bool sum(increase(inp_explainer_runs_total{outcome!=\"quota_blocked\"}[1h])) - 0.00001)) and on() (sum(increase(inp_explainer_runs_total{outcome!=\"quota_blocked\"}[1h])) > 0)) and on() ((time() - max(inp_explainer_last_completed_seconds) < 1200) and on() (time() - max(inp_explainer_heartbeat_seconds) < 180))) or ((vector(1) and on() (max_over_time(inp_explainer_last_completed_seconds[24h]) > 0))) or vector(0)",
           "legendFormat": "__auto",
           "refId": "A",
           "range": false,
@@ -121,18 +60,102 @@
         "defaults": {
           "unit": "short",
           "color": {
-            "mode": "thresholds"
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "#e66767",
+                "color": "#3987e5",
                 "value": null
-              },
+              }
+            ]
+          },
+          "decimals": 0,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "No data",
+                  "color": "gray"
+                },
+                "1": {
+                  "text": "Stale / no recent answers",
+                  "color": "orange"
+                },
+                "2": {
+                  "text": "Needs attention",
+                  "color": "red"
+                },
+                "3": {
+                  "text": "Checks passed",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Run count estimate, last hour",
+      "description": "Counter increase estimate: includes passed, failed checks, errors, timeouts and no-report attempts; excludes local quota skips.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(inp_explainer_runs_total{outcome!=\"quota_blocked\"}[1h]))",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
               {
-                "color": "#199e70",
-                "value": 1
+                "color": "#3987e5",
+                "value": null
               }
             ]
           },
@@ -157,16 +180,16 @@
       },
       "id": 3,
       "gridPos": {
-        "x": 0,
-        "y": 5,
-        "w": 5,
+        "x": 8,
+        "y": 0,
+        "w": 4,
         "h": 4
       }
     },
     {
       "type": "stat",
-      "title": "Task checks passed, last hour",
-      "description": "Did it do what it was asked: called the tools the question needs, answered, and named what was asked about. All three checks on every finished run.",
+      "title": "Whole runs passing / attempts, last hour",
+      "description": "Numerator: runs passing all four checks. Denominator: every attempted run, including errors and timeouts. No attempts leaves this empty.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -177,7 +200,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(increase(agent_task_checks_total{result=\"pass\"}[1h])) / sum(increase(agent_task_checks_total[1h]))",
+          "expr": "sum(increase(inp_explainer_runs_total{outcome=\"passed\"}[1h])) / (sum(increase(inp_explainer_runs_total{outcome!=\"quota_blocked\"}[1h])) > 0)",
           "legendFormat": "__auto",
           "refId": "A",
           "range": false,
@@ -188,22 +211,15 @@
         "defaults": {
           "unit": "percentunit",
           "color": {
-            "mode": "thresholds"
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "#e66767",
+                "color": "#3987e5",
                 "value": null
-              },
-              {
-                "color": "#c98500",
-                "value": 0.8
-              },
-              {
-                "color": "#199e70",
-                "value": 0.95
               }
             ]
           },
@@ -228,16 +244,16 @@
       },
       "id": 4,
       "gridPos": {
-        "x": 5,
-        "y": 5,
-        "w": 5,
+        "x": 12,
+        "y": 0,
+        "w": 6,
         "h": 4
       }
     },
     {
       "type": "stat",
-      "title": "p95 model call, last hour",
-      "description": "95th percentile of gen_ai.client.inference.duration over the last hour, all models.",
+      "title": "Last completed response age",
+      "description": "Age of a response, including responses that fail evaluation. Empty until the first response.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -248,7 +264,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(gen_ai_client_inference_duration_seconds_bucket{service_name=\"oncall-agent\"}[1h])))",
+          "expr": "time() - max(inp_explainer_last_completed_seconds)",
           "legendFormat": "__auto",
           "refId": "A",
           "range": false,
@@ -260,562 +276,14 @@
           "unit": "s",
           "color": {
             "mode": "fixed",
-            "fixedColor": "#d95926"
+            "fixedColor": "#3987e5"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "#d95926",
+                "color": "#3987e5",
                 "value": null
-              }
-            ]
-          },
-          "decimals": 2
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "none",
-        "textMode": "value",
-        "justifyMode": "center",
-        "wideLayout": true,
-        "showPercentChange": false
-      },
-      "id": 5,
-      "gridPos": {
-        "x": 10,
-        "y": 5,
-        "w": 5,
-        "h": 4
-      }
-    },
-    {
-      "type": "stat",
-      "title": "Calls that failed, last hour",
-      "description": "Share of model calls the histogram recorded with error.type set. Most are the 1.5 second deadline one run in ten gets on purpose.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum(increase(gen_ai_client_inference_duration_seconds_count{service_name=\"oncall-agent\", error_type!=\"\"}[1h])) / sum(increase(gen_ai_client_inference_duration_seconds_count{service_name=\"oncall-agent\"}[1h]))",
-          "legendFormat": "__auto",
-          "refId": "A",
-          "range": false,
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "#199e70",
-                "value": null
-              },
-              {
-                "color": "#c98500",
-                "value": 0.08
-              },
-              {
-                "color": "#e66767",
-                "value": 0.15
-              }
-            ]
-          },
-          "decimals": 1
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "none",
-        "textMode": "value",
-        "justifyMode": "center",
-        "wideLayout": true,
-        "showPercentChange": false
-      },
-      "id": 6,
-      "gridPos": {
-        "x": 15,
-        "y": 5,
-        "w": 4,
-        "h": 4
-      }
-    },
-    {
-      "type": "stat",
-      "title": "Spend per month at this pace",
-      "description": "Last hour of tokens at list price, times 24 times 30. Budget $30 a month. Gemma 4 26B has no paid price on the Gemini API, so it adds nothing.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum(sum by (gen_ai_request_model) (\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"input\"}[1h])) * 3e-07)\n  or\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"output\"}[1h])) * 2.5e-06)\n)) * 24 * 30",
-          "legendFormat": "__auto",
-          "refId": "A",
-          "range": false,
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "currencyUSD",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "#199e70",
-                "value": null
-              },
-              {
-                "color": "#c98500",
-                "value": 24.0
-              },
-              {
-                "color": "#e66767",
-                "value": 30.0
-              }
-            ]
-          },
-          "decimals": 2
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "none",
-        "textMode": "value",
-        "justifyMode": "center",
-        "wideLayout": true,
-        "showPercentChange": false
-      },
-      "id": 7,
-      "gridPos": {
-        "x": 19,
-        "y": 5,
-        "w": 5,
-        "h": 4
-      }
-    },
-    {
-      "type": "row",
-      "title": "Which model does the job",
-      "collapsed": false,
-      "panels": [],
-      "id": 8,
-      "gridPos": {
-        "x": 0,
-        "y": 9,
-        "w": 24,
-        "h": 1
-      }
-    },
-    {
-      "type": "table",
-      "title": "Both models, last 6 hours",
-      "description": "The same questions go to both models all day. Read across a row to pick a model for this job: speed, whether it does what it was asked, and what it costs at list price.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate(gen_ai_client_inference_duration_seconds_bucket{service_name=\"oncall-agent\", error_type=\"\"}[6h])))",
-          "legendFormat": "__auto",
-          "refId": "A",
-          "range": false,
-          "instant": true,
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_bucket{service_name=\"oncall-agent\", gen_ai_operation_name=\"invoke_agent\"}[6h])))",
-          "legendFormat": "__auto",
-          "refId": "B",
-          "range": false,
-          "instant": true,
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum by (gen_ai_request_model) (increase(agent_task_checks_total{check=\"used_required_tools\", result=\"pass\"}[6h])) / sum by (gen_ai_request_model) (increase(agent_task_checks_total{check=\"used_required_tools\"}[6h]))",
-          "legendFormat": "__auto",
-          "refId": "C",
-          "range": false,
-          "instant": true,
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum by (gen_ai_request_model) (increase(agent_task_checks_total{check=\"on_topic\", result=\"pass\"}[6h])) / sum by (gen_ai_request_model) (increase(agent_task_checks_total{check=\"on_topic\"}[6h]))",
-          "legendFormat": "__auto",
-          "refId": "D",
-          "range": false,
-          "instant": true,
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum by (gen_ai_request_model) (increase(agent_runs_total{outcome=\"timeout\"}[6h])) / sum by (gen_ai_request_model) (increase(agent_runs_total[6h]))",
-          "legendFormat": "__auto",
-          "refId": "E",
-          "range": false,
-          "instant": true,
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\"}[6h])) / sum by (gen_ai_request_model) (increase(agent_runs_total[6h]))",
-          "legendFormat": "__auto",
-          "refId": "F",
-          "range": false,
-          "instant": true,
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "((sum by (gen_ai_request_model) (\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"input\"}[6h])) * 3e-07)\n  or\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"output\"}[6h])) * 2.5e-06)\n)) or (sum by (gen_ai_request_model) (increase(agent_runs_total[6h])) * 0)) / sum by (gen_ai_request_model) (increase(agent_runs_total[6h])) * 1000",
-          "legendFormat": "__auto",
-          "refId": "G",
-          "range": false,
-          "instant": true,
-          "format": "table"
-        }
-      ],
-      "transformations": [
-        {
-          "id": "merge",
-          "options": {}
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true
-            },
-            "renameByName": {
-              "Value #A": "p95 model call",
-              "Value #B": "p95 whole run",
-              "Value #C": "Called the tools it needed",
-              "Value #D": "Named what was asked",
-              "Value #E": "Cut off by deadline",
-              "Value #F": "Tokens per run",
-              "Value #G": "Cost per 1,000 runs",
-              "gen_ai_request_model": "Model"
-            },
-            "indexByName": {
-              "gen_ai_request_model": 0,
-              "Value #A": 1,
-              "Value #B": 2,
-              "Value #C": 3,
-              "Value #D": 4,
-              "Value #E": 5,
-              "Value #F": 6,
-              "Value #G": 7
-            }
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            }
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "p95 model call"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "s"
-              },
-              {
-                "id": "decimals",
-                "value": 2
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "p95 whole run"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "s"
-              },
-              {
-                "id": "decimals",
-                "value": 1
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Called the tools it needed"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percentunit"
-              },
-              {
-                "id": "decimals",
-                "value": 1
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Named what was asked"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percentunit"
-              },
-              {
-                "id": "decimals",
-                "value": 1
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Cut off by deadline"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percentunit"
-              },
-              {
-                "id": "decimals",
-                "value": 1
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Tokens per run"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "short"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Cost per 1,000 runs"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "currencyUSD"
-              },
-              {
-                "id": "decimals",
-                "value": 3
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "type": "value",
-                    "options": {
-                      "0": {
-                        "text": "no paid price"
-                      }
-                    }
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "showHeader": true,
-        "cellHeight": "md",
-        "footer": {
-          "show": false
-        }
-      },
-      "id": 9,
-      "gridPos": {
-        "x": 0,
-        "y": 10,
-        "w": 24,
-        "h": 5
-      }
-    },
-    {
-      "type": "row",
-      "title": "A real workload: the fix explainer for react-inp-blame",
-      "collapsed": false,
-      "panels": [],
-      "id": 10,
-      "gridPos": {
-        "x": 0,
-        "y": 15,
-        "w": 24,
-        "h": 1
-      }
-    },
-    {
-      "type": "text",
-      "title": "",
-      "options": {
-        "mode": "markdown",
-        "content": "[react-inp-blame](https://github.com/adityareddy-dev/react-inp-blame) is my library that says which React component made a click slow. Here a headless Chrome opens its live demo at [reactinpblame.com](https://reactinpblame.com), makes one of the demo's slow interactions, and reads the report the library writes. A model on the AI SDK (Gemini 3.1 Flash-Lite, Gemini API free tier) gets that report, reads the component's source with one tool, and says why the interaction was slow and what to change. Every answer is checked against the library's own blame and against the fix the demo documents, which the model never sees. Same instrumentation as the agent above: `gen_ai.client.inference.duration` from @ai-sdk/otel, token usage, and spans through the Collector."
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "vector(1)",
-          "legendFormat": "__auto",
-          "refId": "A",
-          "range": false,
-          "instant": true
-        }
-      ],
-      "transparent": true,
-      "id": 11,
-      "gridPos": {
-        "x": 0,
-        "y": 16,
-        "w": 24,
-        "h": 3
-      }
-    },
-    {
-      "type": "stat",
-      "title": "Explanations, last hour",
-      "description": "Interactions measured on the live demo and explained. Zero means it stopped.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum(increase(inp_explainer_runs_total{outcome=\"ok\"}[1h]))",
-          "legendFormat": "__auto",
-          "refId": "A",
-          "range": false,
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "#e66767",
-                "value": null
-              },
-              {
-                "color": "#199e70",
-                "value": 1
               }
             ]
           },
@@ -838,18 +306,64 @@
         "wideLayout": true,
         "showPercentChange": false
       },
-      "id": 12,
+      "id": 5,
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "type": "text",
+      "title": "",
+      "options": {
+        "mode": "markdown",
+        "content": "### Is the explainer giving source-backed suggestions for measured slow interactions?\nChrome measures the live [react-inp-blame demo](https://reactinpblame.com), then the AI SDK explains its report. This is a demo workload. Each finished answer is checked for a successful source response, the exact blamed name, a source citation and a recommended strategy ID matching a documented demo option. The strategy check does not validate the prose or establish that a change works. Suggestions have not been applied or benchmarked. Source files are the pinned ea73e5d snapshot, not a verified copy of the current deploy. Summary: rolling last hour; activity detail: last six hours; freshness: last completed response, stale after 20 minutes. The pretend-shop agent is in dashboard/reference.json."
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "vector(1)",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "transparent": true,
+      "id": 1,
       "gridPos": {
         "x": 0,
-        "y": 19,
-        "w": 5,
+        "y": 4,
+        "w": 24,
         "h": 4
       }
     },
     {
+      "type": "row",
+      "title": "What happened, last hour",
+      "collapsed": false,
+      "panels": [],
+      "id": 6,
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
       "type": "stat",
-      "title": "Named the component the library blamed, last 6 hours",
-      "description": "The answer names the component, handler or child react-inp-blame put the time on.",
+      "title": "Responses finished, last hour",
+      "description": "Both passing and failing evaluations. Finishing is separate from passing.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -860,7 +374,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(increase(inp_explainer_checks_total{check=\"named_culprit\", result=\"pass\"}[6h])) / sum(increase(inp_explainer_checks_total{check=\"named_culprit\"}[6h]))",
+          "expr": "sum(increase(inp_explainer_runs_total{outcome=~\"passed|evaluation_failed\"}[1h]))",
           "legendFormat": "__auto",
           "refId": "A",
           "range": false,
@@ -869,28 +383,21 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percentunit",
+          "unit": "short",
           "color": {
-            "mode": "thresholds"
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "#e66767",
+                "color": "#3987e5",
                 "value": null
-              },
-              {
-                "color": "#c98500",
-                "value": 0.7
-              },
-              {
-                "color": "#199e70",
-                "value": 0.9
               }
             ]
           },
-          "decimals": 1
+          "decimals": 0
         },
         "overrides": []
       },
@@ -909,18 +416,418 @@
         "wideLayout": true,
         "showPercentChange": false
       },
+      "id": 7,
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Whole runs passing, last hour",
+      "description": "The numerator of the run-level fraction.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(inp_explainer_runs_total{outcome=\"passed\"}[1h]))",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3987e5",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 8,
+      "gridPos": {
+        "x": 6,
+        "y": 9,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Errors and timeouts, last hour",
+      "description": "Includes browser runs without a report. Inspect outcomes below.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(inp_explainer_runs_total{outcome=~\"error|timeout|no_report\"}[1h]))",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#e66767"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#e66767",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 9,
+      "gridPos": {
+        "x": 12,
+        "y": 9,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Telemetry sample age",
+      "description": "The metric value is exporter wall time; old telemetry is never treated as healthy activity.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "time() - max(inp_explainer_heartbeat_seconds)",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3987e5",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 10,
+      "gridPos": {
+        "x": 18,
+        "y": 9,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Runs by outcome, rolling last hour",
+      "description": "Quota skips remain visible but are not model attempts.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (outcome) (increase(inp_explainer_runs_total[1h]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "drawStyle": "bars",
+            "spanNulls": true,
+            "gradientMode": "none",
+            "axisSoftMin": 0,
+            "insertNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "passed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#199e70"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "evaluation_failed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#e66767"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "timeout"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c98500"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "error"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#e66767"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 11,
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Individual check fractions, rolling last hour",
+      "description": "These fractions count checks on completed responses. The top fraction counts whole runs and includes failed attempts.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (check) (increase(inp_explainer_checks_total{result=\"pass\"}[1h])) / sum by (check) (increase(inp_explainer_checks_total[1h]))",
+          "legendFormat": "{{check}}",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "drawStyle": "line",
+            "spanNulls": true,
+            "gradientMode": "none",
+            "axisSoftMin": 0,
+            "insertNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "max": 1,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 12,
+      "gridPos": {
+        "x": 12,
+        "y": 13,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "Browser, model, source tool and whole run",
+      "collapsed": false,
+      "panels": [],
       "id": 13,
       "gridPos": {
-        "x": 5,
-        "y": 19,
-        "w": 5,
-        "h": 4
+        "x": 0,
+        "y": 21,
+        "w": 24,
+        "h": 1
       }
     },
     {
-      "type": "stat",
-      "title": "Gave the fix the demo documents, last 6 hours",
-      "description": "The answer proposes the fix the demo's lab page lists for that interaction (useMemo, virtualise, move state down, a worker, and so on). The model never sees that page.",
+      "type": "table",
+      "title": "Latest browser reports; run estimates over the last 6 hours",
+      "description": "Browser sample counters start with each instrument series and reset on service restart. Latest duration and age come from actual Chrome reports; run estimates use a six-hour window. Not customer production traffic.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -931,67 +838,221 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(increase(inp_explainer_checks_total{check=\"right_fix\", result=\"pass\"}[6h])) / sum(increase(inp_explainer_checks_total{check=\"right_fix\"}[6h]))",
+          "expr": "sum by (agent_task) (inp_explainer_interaction_duration_seconds_count)",
           "legendFormat": "__auto",
           "refId": "A",
           "range": false,
-          "instant": true
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (agent_task) (inp_explainer_interaction_last_duration_seconds)",
+          "legendFormat": "__auto",
+          "refId": "B",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "time() - max by (agent_task) (inp_explainer_interaction_last_measured_seconds)",
+          "legendFormat": "__auto",
+          "refId": "C",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (agent_task) (increase(inp_explainer_runs_total{outcome!=\"quota_blocked\"}[6h]))",
+          "legendFormat": "__auto",
+          "refId": "D",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value #A": "Cumulative browser samples",
+              "Value #B": "Latest measured interaction",
+              "Value #C": "Report age",
+              "Value #D": "Attempted runs, last 6h",
+              "agent_task": "Scenario"
+            },
+            "indexByName": {
+              "agent_task": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4
+            }
+          }
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percentunit",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Cumulative browser samples"
+            },
+            "properties": [
               {
-                "color": "#e66767",
-                "value": null
-              },
-              {
-                "color": "#c98500",
-                "value": 0.7
-              },
-              {
-                "color": "#199e70",
-                "value": 0.9
+                "id": "unit",
+                "value": "short"
               }
             ]
           },
-          "decimals": 1
-        },
-        "overrides": []
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Latest measured interaction"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Report age"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Attempted runs, last 6h"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          }
+        ]
       },
       "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "none",
-        "textMode": "value",
-        "justifyMode": "center",
-        "wideLayout": true,
-        "showPercentChange": false
+        "showHeader": true,
+        "cellHeight": "md",
+        "footer": {
+          "show": false
+        }
       },
       "id": 14,
       "gridPos": {
-        "x": 10,
-        "y": 19,
-        "w": 5,
+        "x": 0,
+        "y": 22,
+        "w": 24,
+        "h": 7
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Model call estimate, last hour",
+      "description": "SDK histogram sample count; one run can make several model calls.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(gen_ai_client_inference_duration_seconds_count{service_name=\"react-inp-blame-explainer\"}[1h]))",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3987e5",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      },
+      "id": 15,
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 6,
         "h": 4
       }
     },
     {
       "type": "stat",
       "title": "p95 model call, last hour",
-      "description": "gen_ai.client.inference.duration from @ai-sdk/otel, for the explainer only.",
+      "description": "The SDK inference histogram, including calls with error.type.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1044,18 +1105,18 @@
         "wideLayout": true,
         "showPercentChange": false
       },
-      "id": 15,
+      "id": 16,
       "gridPos": {
-        "x": 15,
-        "y": 19,
-        "w": 4,
+        "x": 6,
+        "y": 29,
+        "w": 6,
         "h": 4
       }
     },
     {
       "type": "stat",
-      "title": "p95 to explain one interaction, last hour",
-      "description": "From the explain_interaction span: measuring the click in Chrome, reading the source and writing the answer.",
+      "title": "p95 source tool, last hour",
+      "description": "Source tool spans from the same run trace.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1066,7 +1127,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_seconds_bucket{service_name=\"react-inp-blame-explainer\", span_name=\"explain_interaction\", agent_outcome=\"ok\"}[1h])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_seconds_bucket{service_name=\"react-inp-blame-explainer\", gen_ai_operation_name=\"execute_tool\"}[1h])))",
           "legendFormat": "__auto",
           "refId": "A",
           "range": false,
@@ -1089,7 +1150,7 @@
               }
             ]
           },
-          "decimals": 1
+          "decimals": 2
         },
         "overrides": []
       },
@@ -1108,18 +1169,18 @@
         "wideLayout": true,
         "showPercentChange": false
       },
-      "id": 16,
+      "id": 17,
       "gridPos": {
-        "x": 19,
-        "y": 19,
-        "w": 5,
+        "x": 12,
+        "y": 29,
+        "w": 6,
         "h": 4
       }
     },
     {
-      "type": "table",
-      "title": "Each slow interaction on the live demo, last 6 hours",
-      "description": "One row per interaction in the demo's anti-pattern lab. Read across: how slow the click really was, how long the explanation took, and whether it got the cause and the fix right.",
+      "type": "stat",
+      "title": "p95 whole run, last hour",
+      "description": "Includes browser measurement, tool reads, model calls and evaluation; all outcomes.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1130,391 +1191,73 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.5, sum by (le, agent_task) (rate(inp_explainer_interaction_duration_seconds_bucket[6h])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_seconds_bucket{service_name=\"react-inp-blame-explainer\", span_name=\"explain_interaction\"}[1h])))",
           "legendFormat": "__auto",
           "refId": "A",
           "range": false,
-          "instant": true,
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "histogram_quantile(0.95, sum by (le, agent_task) (rate(traces_span_metrics_duration_seconds_bucket{service_name=\"react-inp-blame-explainer\", span_name=\"explain_interaction\", agent_outcome=\"ok\"}[6h])))",
-          "legendFormat": "__auto",
-          "refId": "B",
-          "range": false,
-          "instant": true,
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum by (agent_task) (increase(inp_explainer_checks_total{check=\"read_source\", result=\"pass\"}[6h])) / sum by (agent_task) (increase(inp_explainer_checks_total{check=\"read_source\"}[6h]))",
-          "legendFormat": "__auto",
-          "refId": "C",
-          "range": false,
-          "instant": true,
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum by (agent_task) (increase(inp_explainer_checks_total{check=\"named_culprit\", result=\"pass\"}[6h])) / sum by (agent_task) (increase(inp_explainer_checks_total{check=\"named_culprit\"}[6h]))",
-          "legendFormat": "__auto",
-          "refId": "D",
-          "range": false,
-          "instant": true,
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum by (agent_task) (increase(inp_explainer_checks_total{check=\"right_fix\", result=\"pass\"}[6h])) / sum by (agent_task) (increase(inp_explainer_checks_total{check=\"right_fix\"}[6h]))",
-          "legendFormat": "__auto",
-          "refId": "E",
-          "range": false,
-          "instant": true,
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum by (agent_task) (increase(gen_ai_client_token_usage_sum{service_name=\"react-inp-blame-explainer\"}[6h])) / sum by (agent_task) (increase(inp_explainer_runs_total{outcome=\"ok\"}[6h]))",
-          "legendFormat": "__auto",
-          "refId": "F",
-          "range": false,
-          "instant": true,
-          "format": "table"
-        }
-      ],
-      "transformations": [
-        {
-          "id": "merge",
-          "options": {}
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true
-            },
-            "renameByName": {
-              "Value #A": "Measured in Chrome (median)",
-              "Value #B": "p95 to explain",
-              "Value #C": "Read the source",
-              "Value #D": "Named the culprit",
-              "Value #E": "Right fix",
-              "Value #F": "Tokens per explanation",
-              "agent_task": "Interaction"
-            },
-            "indexByName": {
-              "agent_task": 0,
-              "Value #A": 1,
-              "Value #B": 2,
-              "Value #C": 3,
-              "Value #D": 4,
-              "Value #E": 5,
-              "Value #F": 6
-            }
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            }
-          },
-          "mappings": [
-            {
-              "type": "special",
-              "options": {
-                "match": "nan",
-                "result": {
-                  "text": "\u2013"
-                }
-              }
-            },
-            {
-              "type": "special",
-              "options": {
-                "match": "null",
-                "result": {
-                  "text": "\u2013"
-                }
-              }
-            }
-          ]
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Measured in Chrome (median)"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "s"
-              },
-              {
-                "id": "decimals",
-                "value": 2
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "p95 to explain"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "s"
-              },
-              {
-                "id": "decimals",
-                "value": 1
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Read the source"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percentunit"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Named the culprit"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percentunit"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Right fix"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "percentunit"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Tokens per explanation"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "short"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "showHeader": true,
-        "cellHeight": "md",
-        "footer": {
-          "show": false
-        }
-      },
-      "id": 17,
-      "gridPos": {
-        "x": 0,
-        "y": 23,
-        "w": 24,
-        "h": 7
-      }
-    },
-    {
-      "type": "row",
-      "title": "Latency: gen_ai.client.inference.duration",
-      "collapsed": false,
-      "panels": [],
-      "id": 18,
-      "gridPos": {
-        "x": 0,
-        "y": 30,
-        "w": 24,
-        "h": 1
-      }
-    },
-    {
-      "type": "timeseries",
-      "title": "p50 and p95 inference latency by model",
-      "description": "Successful calls only, rolling 15 minutes. The p95 line is dashed.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "histogram_quantile(0.50, sum by (le, gen_ai_request_model) (rate(gen_ai_client_inference_duration_seconds_bucket{service_name=\"oncall-agent\", error_type=\"\"}[15m])))",
-          "legendFormat": "p50 {{gen_ai_request_model}}",
-          "refId": "A",
-          "range": true
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate(gen_ai_client_inference_duration_seconds_bucket{service_name=\"oncall-agent\", error_type=\"\"}[15m])))",
-          "legendFormat": "p95 {{gen_ai_request_model}}",
-          "refId": "B",
-          "range": true
+          "instant": true
         }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "s",
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 0,
-            "showPoints": "never",
-            "drawStyle": "line",
-            "spanNulls": true,
-            "gradientMode": "none",
-            "axisSoftMin": 0,
-            "insertNulls": false,
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            }
-          },
           "color": {
-            "mode": "palette-classic"
-          }
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3987e5",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".*gemma.*"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#3987e5"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".*gemini.*"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#d95926"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "^p95.*"
-            },
-            "properties": [
-              {
-                "id": "custom.lineStyle",
-                "value": {
-                  "fill": "dash",
-                  "dash": [
-                    10,
-                    6
-                  ]
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
+        "reduceOptions": {
           "calcs": [
-            "mean",
-            "max"
+            "lastNotNull"
           ],
-          "showLegend": true
+          "fields": "",
+          "values": false
         },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
       },
+      "id": 18,
+      "gridPos": {
+        "x": 18,
+        "y": 29,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "type": "row",
+      "title": "Tokens and free allowance",
+      "collapsed": false,
+      "panels": [],
       "id": 19,
       "gridPos": {
         "x": 0,
-        "y": 31,
-        "w": 14,
-        "h": 11
+        "y": 33,
+        "w": 24,
+        "h": 1
       }
     },
     {
-      "type": "heatmap",
-      "title": "Where model calls land, by bucket",
-      "description": "Every call, both models, in the histogram's own bucket boundaries (0.01 s to 81.92 s).",
+      "type": "stat",
+      "title": "Input token estimate, last hour",
+      "description": "Rolling last-hour counter increase estimate from the SDK token histogram, summed across model calls. Empty means no token samples; zero means samples with no increase.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1525,784 +1268,60 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (le) (increase(gen_ai_client_inference_duration_seconds_bucket{service_name=\"oncall-agent\"}[$__rate_interval]))",
-          "legendFormat": "{{le}}",
+          "expr": "sum(increase(gen_ai_client_token_usage_sum{service_name=\"react-inp-blame-explainer\", gen_ai_token_type=\"input\"}[1h]))",
+          "legendFormat": "__auto",
           "refId": "A",
-          "range": true,
-          "format": "heatmap"
+          "range": false,
+          "instant": true
         }
       ],
-      "options": {
-        "calculate": false,
-        "yAxis": {
-          "unit": "s",
-          "axisPlacement": "left"
-        },
-        "cellGap": 2,
-        "color": {
-          "mode": "scheme",
-          "scheme": "Blues",
-          "steps": 64,
-          "exponent": 0.5,
-          "fill": "#3987e5"
-        },
-        "rowsFrame": {
-          "layout": "auto"
-        },
-        "tooltip": {
-          "mode": "single",
-          "yHistogram": true
-        },
-        "legend": {
-          "show": true
-        },
-        "filterValues": {
-          "le": 1e-09
-        }
-      },
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3987e5",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
         "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
       },
       "id": 20,
       "gridPos": {
-        "x": 14,
-        "y": 31,
-        "w": 10,
-        "h": 11
-      }
-    },
-    {
-      "type": "row",
-      "title": "Tokens and cost",
-      "collapsed": true,
-      "panels": [
-        {
-          "type": "timeseries",
-          "title": "Tokens per minute, input and output",
-          "description": "From gen_ai.client.token.usage, recorded once per model call.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "expr": "sum by (gen_ai_request_model, gen_ai_token_type) (rate(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\"}[$__rate_interval])) * 60",
-              "legendFormat": "{{gen_ai_request_model}} {{gen_ai_token_type}}",
-              "refId": "A",
-              "range": true
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 80,
-                "showPoints": "never",
-                "drawStyle": "line",
-                "spanNulls": true,
-                "gradientMode": "none",
-                "axisSoftMin": 0,
-                "insertNulls": false,
-                "stacking": {
-                  "mode": "normal",
-                  "group": "A"
-                }
-              },
-              "color": {
-                "mode": "palette-classic"
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemma.*input"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#3987e5"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemma.*output"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#9085e9"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemini.*input"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#d95926"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemini.*output"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#c98500"
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "bottom",
-              "calcs": [
-                "mean",
-                "max"
-              ],
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "id": 22,
-          "gridPos": {
-            "x": 0,
-            "y": 43,
-            "w": 12,
-            "h": 10
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Cost per hour at list price",
-          "description": "Rolling one-hour token cost per model. List prices in prices.json next to this dashboard.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "expr": "sum by (gen_ai_request_model) (\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"input\"}[1h])) * 3e-07)\n  or\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"output\"}[1h])) * 2.5e-06)\n)",
-              "legendFormat": "{{gen_ai_request_model}}",
-              "refId": "A",
-              "range": true
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "currencyUSD",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 0,
-                "showPoints": "never",
-                "drawStyle": "line",
-                "spanNulls": true,
-                "gradientMode": "none",
-                "axisSoftMin": 0,
-                "insertNulls": false,
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                }
-              },
-              "color": {
-                "mode": "palette-classic"
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemma.*"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#3987e5"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemini.*"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#d95926"
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "bottom",
-              "calcs": [
-                "mean",
-                "max"
-              ],
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "id": 23,
-          "gridPos": {
-            "x": 12,
-            "y": 43,
-            "w": 12,
-            "h": 10
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Tokens per model call (average)",
-          "description": "Tool results make input grow with each step of a run.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "expr": "sum by (gen_ai_request_model, gen_ai_token_type) (rate(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\"}[$__rate_interval])) / sum by (gen_ai_request_model, gen_ai_token_type) (rate(gen_ai_client_token_usage_count{service_name=\"oncall-agent\"}[$__rate_interval]))",
-              "legendFormat": "{{gen_ai_request_model}} {{gen_ai_token_type}}",
-              "refId": "A",
-              "range": true
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 0,
-                "showPoints": "never",
-                "drawStyle": "line",
-                "spanNulls": true,
-                "gradientMode": "none",
-                "axisSoftMin": 0,
-                "insertNulls": false,
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                }
-              },
-              "color": {
-                "mode": "palette-classic"
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemma.*input"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#3987e5"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemma.*output"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#9085e9"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemini.*input"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#d95926"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemini.*output"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#c98500"
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "bottom",
-              "calcs": [
-                "mean",
-                "max"
-              ],
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "id": 24,
-          "gridPos": {
-            "x": 0,
-            "y": 53,
-            "w": 12,
-            "h": 10
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Cost per agent run",
-          "description": "One-hour cost divided by runs finished in that hour.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "expr": "sum by (gen_ai_request_model) (\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"input\"}[1h])) * 3e-07)\n  or\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"output\"}[1h])) * 2.5e-06)\n) / sum by (gen_ai_request_model) (increase(agent_runs_total[1h]))",
-              "legendFormat": "{{gen_ai_request_model}}",
-              "refId": "A",
-              "range": true
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "currencyUSD",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 0,
-                "showPoints": "never",
-                "drawStyle": "line",
-                "spanNulls": true,
-                "gradientMode": "none",
-                "axisSoftMin": 0,
-                "insertNulls": false,
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                }
-              },
-              "color": {
-                "mode": "palette-classic"
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemma.*"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#3987e5"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemini.*"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#d95926"
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "bottom",
-              "calcs": [
-                "mean",
-                "max"
-              ],
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "id": 25,
-          "gridPos": {
-            "x": 12,
-            "y": 53,
-            "w": 12,
-            "h": 10
-          }
-        }
-      ],
-      "id": 21,
-      "gridPos": {
         "x": 0,
-        "y": 42,
-        "w": 24,
-        "h": 1
-      }
-    },
-    {
-      "type": "row",
-      "title": "Doing what it was asked, within budget",
-      "collapsed": false,
-      "panels": [],
-      "id": 26,
-      "gridPos": {
-        "x": 0,
-        "y": 63,
-        "w": 24,
-        "h": 1
-      }
-    },
-    {
-      "type": "timeseries",
-      "title": "Runs that passed each check",
-      "description": "Rolling one hour. used_required_tools: the run called every tool its question needs. answered: the reply is not empty. on_topic: the reply names what was asked about.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum by (check) (increase(agent_task_checks_total{result=\"pass\"}[1h])) / sum by (check) (increase(agent_task_checks_total[1h]))",
-          "legendFormat": "{{check}}",
-          "refId": "A",
-          "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 0,
-            "showPoints": "never",
-            "drawStyle": "line",
-            "spanNulls": true,
-            "gradientMode": "none",
-            "axisSoftMin": 0,
-            "insertNulls": false,
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            }
-          },
-          "color": {
-            "mode": "palette-classic"
-          },
-          "max": 1,
-          "min": 0
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "used_required_tools"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#3987e5"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "answered"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#199e70"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "on_topic"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#9085e9"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "mean",
-            "max"
-          ],
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "id": 27,
-      "gridPos": {
-        "x": 0,
-        "y": 64,
-        "w": 9,
-        "h": 10
-      }
-    },
-    {
-      "type": "timeseries",
-      "title": "Required tools used, by model and task",
-      "description": "Rolling six hours. Shows which model skips a tool on which kind of question.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum by (gen_ai_request_model, agent_task) (increase(agent_task_checks_total{check=\"used_required_tools\", result=\"pass\"}[6h])) / sum by (gen_ai_request_model, agent_task) (increase(agent_task_checks_total{check=\"used_required_tools\"}[6h]))",
-          "legendFormat": "{{gen_ai_request_model}} {{agent_task}}",
-          "refId": "A",
-          "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 0,
-            "showPoints": "never",
-            "drawStyle": "line",
-            "spanNulls": true,
-            "gradientMode": "none",
-            "axisSoftMin": 0,
-            "insertNulls": false,
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            }
-          },
-          "color": {
-            "mode": "palette-classic"
-          },
-          "max": 1,
-          "min": 0
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "lastNotNull"
-          ],
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "id": 28,
-      "gridPos": {
-        "x": 9,
-        "y": 64,
-        "w": 9,
-        "h": 10
-      }
-    },
-    {
-      "type": "stat",
-      "title": "Spend in the last 24 hours, share of daily budget",
-      "description": "Last 24 hours of tokens at list price against a $1.00 daily budget.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum(sum by (gen_ai_request_model) (\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"input\"}[24h])) * 3e-07)\n  or\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"output\"}[24h])) * 2.5e-06)\n)) / 1.0",
-          "legendFormat": "__auto",
-          "refId": "A",
-          "range": false,
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "#199e70",
-                "value": null
-              },
-              {
-                "color": "#c98500",
-                "value": 0.8
-              },
-              {
-                "color": "#e66767",
-                "value": 1
-              }
-            ]
-          },
-          "decimals": 1
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "none",
-        "textMode": "value",
-        "justifyMode": "center",
-        "wideLayout": true,
-        "showPercentChange": false
-      },
-      "id": 29,
-      "gridPos": {
-        "x": 18,
-        "y": 64,
+        "y": 34,
         "w": 6,
-        "h": 5
+        "h": 6
       }
     },
     {
       "type": "stat",
-      "title": "Cost per 1,000 runs, last 6 hours",
-      "description": "Both models together at list price. Gemma 4 26B runs count, its cost is zero.",
+      "title": "Output token estimate, last hour",
+      "description": "Rolling last-hour counter increase estimate from the SDK token histogram, summed across model calls. Empty means no token samples; zero means samples with no increase.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -2313,7 +1332,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(sum by (gen_ai_request_model) (\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"input\"}[6h])) * 3e-07)\n  or\n  (sum by (gen_ai_request_model) (increase(gen_ai_client_token_usage_sum{service_name=\"oncall-agent\", gen_ai_request_model=\"gemini-3.5-flash-lite\", gen_ai_token_type=\"output\"}[6h])) * 2.5e-06)\n)) / sum(increase(agent_runs_total[6h])) * 1000",
+          "expr": "sum(increase(gen_ai_client_token_usage_sum{service_name=\"react-inp-blame-explainer\", gen_ai_token_type=\"output\"}[1h]))",
           "legendFormat": "__auto",
           "refId": "A",
           "range": false,
@@ -2322,21 +1341,21 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "currencyUSD",
+          "unit": "short",
           "color": {
             "mode": "fixed",
-            "fixedColor": "#c98500"
+            "fixedColor": "#3987e5"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "#c98500",
+                "color": "#3987e5",
                 "value": null
               }
             ]
           },
-          "decimals": 3
+          "decimals": 0
         },
         "overrides": []
       },
@@ -2355,1076 +1374,124 @@
         "wideLayout": true,
         "showPercentChange": false
       },
-      "id": 30,
+      "id": 21,
       "gridPos": {
-        "x": 18,
-        "y": 69,
+        "x": 6,
+        "y": 34,
         "w": 6,
-        "h": 5
+        "h": 6
+      }
+    },
+    {
+      "type": "text",
+      "title": "",
+      "options": {
+        "mode": "markdown",
+        "content": "### Free project allowance\nAI Studio account reading, November 7, 2026, 7:28 PM CST (-06:00): Gemini 3.1 Flash-Lite, Free tier; 500 requests/day, 15 requests/minute and 250,000 input tokens/minute. [Rate-limit definitions](https://ai.google.dev/gemini-api/docs/rate-limits).\n\nThe persistent local ceiling is 400 reserved requests per Pacific day. Each run reserves four requests before it starts; unused reservations are not returned. SDK retries are disabled. The model-call estimate above counts measured calls, not reservations. Token totals cover the last hour, not the per-minute allowance window. No paid fallback."
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "vector(1)",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "transparent": true,
+      "id": 22,
+      "gridPos": {
+        "x": 12,
+        "y": 34,
+        "w": 12,
+        "h": 6
       }
     },
     {
       "type": "row",
-      "title": "The agent loop",
-      "collapsed": true,
-      "panels": [
-        {
-          "type": "timeseries",
-          "title": "Agent runs by outcome",
-          "description": "One run is a question answered with up to four model calls. One run in ten gets a 1.5 s deadline on purpose.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "expr": "sum by (outcome) (increase(agent_runs_total[$__rate_interval]))",
-              "legendFormat": "{{outcome}}",
-              "refId": "A",
-              "range": true
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 80,
-                "showPoints": "never",
-                "drawStyle": "bars",
-                "spanNulls": true,
-                "gradientMode": "none",
-                "axisSoftMin": 0,
-                "insertNulls": false,
-                "stacking": {
-                  "mode": "normal",
-                  "group": "A"
-                }
-              },
-              "color": {
-                "mode": "palette-classic"
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "ok"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#199e70"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "timeout"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#c98500"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "error"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#e66767"
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "bottom",
-              "calcs": [
-                "sum"
-              ],
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "id": 32,
-          "gridPos": {
-            "x": 0,
-            "y": 75,
-            "w": 8,
-            "h": 9
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Failed model calls by error.type",
-          "description": "The inference histogram records failed calls too, with error.type set.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "expr": "sum by (error_type, gen_ai_request_model) (increase(gen_ai_client_inference_duration_seconds_count{service_name=\"oncall-agent\", error_type!=\"\"}[$__rate_interval])) > 0",
-              "legendFormat": "{{gen_ai_request_model}} {{error_type}}",
-              "refId": "A",
-              "range": true
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 80,
-                "showPoints": "never",
-                "drawStyle": "bars",
-                "spanNulls": true,
-                "gradientMode": "none",
-                "axisSoftMin": 0,
-                "insertNulls": false,
-                "stacking": {
-                  "mode": "normal",
-                  "group": "A"
-                }
-              },
-              "color": {
-                "mode": "palette-classic"
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemma.*"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#3987e5"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemini.*"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#d95926"
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "bottom",
-              "calcs": [
-                "sum"
-              ],
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "id": 33,
-          "gridPos": {
-            "x": 8,
-            "y": 75,
-            "w": 8,
-            "h": 9
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Tool calls the model asked for",
-          "description": "get_error_rate and get_runbook.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "expr": "sum by (gen_ai_tool_name) (increase(agent_tool_calls_total[$__rate_interval]))",
-              "legendFormat": "{{gen_ai_tool_name}}",
-              "refId": "A",
-              "range": true
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 80,
-                "showPoints": "never",
-                "drawStyle": "bars",
-                "spanNulls": true,
-                "gradientMode": "none",
-                "axisSoftMin": 0,
-                "insertNulls": false,
-                "stacking": {
-                  "mode": "normal",
-                  "group": "A"
-                }
-              },
-              "color": {
-                "mode": "palette-classic"
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "get_error_rate"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#199e70"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "get_runbook"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#d55181"
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "bottom",
-              "calcs": [
-                "sum"
-              ],
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "id": 34,
-          "gridPos": {
-            "x": 16,
-            "y": 75,
-            "w": 8,
-            "h": 9
-          }
-        }
-      ],
-      "id": 31,
+      "title": "Recorded ContextStorm answer and source review",
+      "collapsed": false,
+      "panels": [],
+      "id": 23,
       "gridPos": {
         "x": 0,
-        "y": 74,
+        "y": 40,
         "w": 24,
         "h": 1
       }
     },
     {
-      "type": "row",
-      "title": "Spans from @ai-sdk/otel, turned into metrics by the Collector",
-      "collapsed": true,
-      "panels": [
+      "type": "text",
+      "title": "",
+      "options": {
+        "mode": "markdown",
+        "content": "Recorded response, November 07, 2026, 07:47:05 PM CST (-0600), context-storm, measured 200 ms.\n> The ContextStorm component creates a new object reference for the CartContext provider every time it renders, which causes all components consuming that context to re-render. Stabilizing the context value using `useMemo` ensures that only consumers who actually need to react to data changes will re-render. This will prevent the unnecessary re-rendering of the 800 LineItem components.\n\nBlamed: `OrderSummary`. Source: `ContextStorm.tsx`. Suggested strategy: `stabilize_context`. Recorded result: `passed`. Trace: `96425d3dda8faebd17c24ab658b66f2b`. This example is fixed; the statistics are live."
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
         {
-          "type": "timeseries",
-          "title": "p95 duration from spans: runs, model calls, tools",
-          "description": "The Collector's spanmetrics connector reads the invoke_agent, chat and execute_tool spans the AI SDK emits and writes duration histograms. Rolling 15 minutes. Dashed lines are model calls.",
           "datasource": {
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "expr": "histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_bucket{service_name=\"oncall-agent\", gen_ai_operation_name=\"invoke_agent\"}[15m])))",
-              "legendFormat": "run {{gen_ai_request_model}}",
-              "refId": "A",
-              "range": true
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "expr": "histogram_quantile(0.95, sum by (le, gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_bucket{service_name=\"oncall-agent\", gen_ai_operation_name=\"chat\"}[15m])))",
-              "legendFormat": "model call {{gen_ai_request_model}}",
-              "refId": "B",
-              "range": true
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "expr": "histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate(traces_span_metrics_duration_seconds_bucket{service_name=\"oncall-agent\", gen_ai_operation_name=\"execute_tool\"}[15m])))",
-              "legendFormat": "tool {{gen_ai_tool_name}}",
-              "refId": "C",
-              "range": true
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "s",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 0,
-                "showPoints": "never",
-                "drawStyle": "line",
-                "spanNulls": true,
-                "gradientMode": "none",
-                "axisSoftMin": 0,
-                "insertNulls": false,
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                }
-              },
-              "color": {
-                "mode": "palette-classic"
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemma.*"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#3987e5"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemini.*"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#d95926"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "tool get_error_rate"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#199e70"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "tool get_runbook"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#d55181"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": "^model call.*"
-                },
-                "properties": [
-                  {
-                    "id": "custom.lineStyle",
-                    "value": {
-                      "fill": "dash",
-                      "dash": [
-                        10,
-                        6
-                      ]
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "bottom",
-              "calcs": [
-                "mean",
-                "max"
-              ],
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "id": 36,
-          "gridPos": {
-            "x": 0,
-            "y": 85,
-            "w": 12,
-            "h": 11
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Where a run's time goes",
-          "description": "Average seconds per run, from span durations. Model time is nearly all of it.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "expr": "sum by (gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_sum{service_name=\"oncall-agent\", gen_ai_operation_name=\"chat\"}[15m])) / sum by (gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_count{service_name=\"oncall-agent\", gen_ai_operation_name=\"invoke_agent\"}[15m]))",
-              "legendFormat": "in model calls, {{gen_ai_request_model}}",
-              "refId": "A",
-              "range": true
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "expr": "sum(rate(traces_span_metrics_duration_seconds_sum{service_name=\"oncall-agent\", gen_ai_operation_name=\"execute_tool\"}[15m])) / sum(rate(traces_span_metrics_duration_seconds_count{service_name=\"oncall-agent\", gen_ai_operation_name=\"invoke_agent\"}[15m]))",
-              "legendFormat": "in tools, all models",
-              "refId": "B",
-              "range": true
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "s",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 0,
-                "showPoints": "never",
-                "drawStyle": "line",
-                "spanNulls": true,
-                "gradientMode": "none",
-                "axisSoftMin": 0,
-                "insertNulls": false,
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                }
-              },
-              "color": {
-                "mode": "palette-classic"
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemma.*"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#3987e5"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemini.*"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#d95926"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "in tools, all models"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#199e70"
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "bottom",
-              "calcs": [
-                "mean",
-                "max"
-              ],
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "id": 37,
-          "gridPos": {
-            "x": 12,
-            "y": 85,
-            "w": 6,
-            "h": 11
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Model calls per run",
-          "description": "chat spans per invoke_agent span, rolling 30 minutes. Each tool round trip adds a call.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "expr": "sum by (gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_count{service_name=\"oncall-agent\", gen_ai_operation_name=\"chat\"}[30m])) / sum by (gen_ai_request_model) (rate(traces_span_metrics_duration_seconds_count{service_name=\"oncall-agent\", gen_ai_operation_name=\"invoke_agent\"}[30m]))",
-              "legendFormat": "{{gen_ai_request_model}}",
-              "refId": "A",
-              "range": true
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 0,
-                "showPoints": "never",
-                "drawStyle": "line",
-                "spanNulls": true,
-                "gradientMode": "none",
-                "axisSoftMin": 0,
-                "insertNulls": false,
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                }
-              },
-              "color": {
-                "mode": "palette-classic"
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemma.*"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#3987e5"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": ".*gemini.*"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "mode": "fixed",
-                      "fixedColor": "#d95926"
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "bottom",
-              "calcs": [
-                "mean",
-                "max"
-              ],
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "id": 38,
-          "gridPos": {
-            "x": 18,
-            "y": 85,
-            "w": 6,
-            "h": 11
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "p95 run time by kind of question",
-          "description": "From the agent's oncall_question span, which wraps a whole run. Rolling 30 minutes. Questions that need a tool and a runbook take more round trips.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "expr": "histogram_quantile(0.95, sum by (le, agent_task) (rate(traces_span_metrics_duration_seconds_bucket{service_name=\"oncall-agent\", span_name=\"oncall_question\", agent_task!=\"\"}[30m])))",
-              "legendFormat": "{{agent_task}}",
-              "refId": "A",
-              "range": true
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "s",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 0,
-                "showPoints": "never",
-                "drawStyle": "line",
-                "spanNulls": true,
-                "gradientMode": "none",
-                "axisSoftMin": 0,
-                "insertNulls": false,
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                }
-              },
-              "color": {
-                "mode": "palette-classic"
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "bottom",
-              "calcs": [
-                "mean",
-                "max"
-              ],
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "id": 39,
-          "gridPos": {
-            "x": 0,
-            "y": 96,
-            "w": 12,
-            "h": 9
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Runs by kind of question and outcome",
-          "description": "Counted from the oncall_question spans. Shows which kinds of question hit the 1.5 second deadline.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${datasource}"
-              },
-              "expr": "sum by (agent_task, agent_outcome) (increase(traces_span_metrics_calls_total{span_name=\"oncall_question\", agent_task!=\"\"}[$__rate_interval])) > 0",
-              "legendFormat": "{{agent_task}} {{agent_outcome}}",
-              "refId": "A",
-              "range": true
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 80,
-                "showPoints": "never",
-                "drawStyle": "bars",
-                "spanNulls": true,
-                "gradientMode": "none",
-                "axisSoftMin": 0,
-                "insertNulls": false,
-                "stacking": {
-                  "mode": "normal",
-                  "group": "A"
-                }
-              },
-              "color": {
-                "mode": "palette-classic"
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "bottom",
-              "calcs": [
-                "sum"
-              ],
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "id": 40,
-          "gridPos": {
-            "x": 12,
-            "y": 96,
-            "w": 12,
-            "h": 9
-          }
+          "expr": "vector(1)",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
         }
       ],
-      "id": 35,
+      "transparent": true,
+      "id": 24,
       "gridPos": {
         "x": 0,
-        "y": 84,
-        "w": 24,
-        "h": 1
+        "y": 41,
+        "w": 12,
+        "h": 10
       }
     },
     {
-      "type": "row",
-      "title": "Which runs, from the traces in Tempo",
-      "collapsed": true,
-      "panels": [
+      "type": "text",
+      "title": "",
+      "options": {
+        "mode": "markdown",
+        "content": "### Source review: useMemo does not establish this claim\nIn the pinned [ContextStorm.tsx](https://github.com/adityareddy-dev/react-inp-blame/blob/ea73e5d/apps/demo/src/scenarios/ContextStorm.tsx), every Add to cart click increments `items`, and every one of the 800 `LineItem` consumers reads `items` from `CartContext`. A provider value memoized with `items` as a dependency still changes on every measured click. The recorded answer's claim that `useMemo` prevents those 800 consumers from rerendering is not established by this source.\n\nThe recorded `passed` result means the four structured checks passed: successful source read, exact blamed name, source citation and documented strategy ID. The prose claim still needs review. The answer and recorded result are preserved. No suggested fix has been applied or benchmarked."
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "targets": [
         {
-          "type": "timeseries",
-          "title": "Runs that failed a check, by check and model",
-          "description": "Counted from the oncall_question spans in 5 minute steps. agent.checks.failed lists every check a run failed, so a run that skipped its tool and also left out the service shows as both.",
           "datasource": {
-            "type": "tempo",
-            "uid": "${tempo}"
+            "type": "prometheus",
+            "uid": "${datasource}"
           },
-          "targets": [
-            {
-              "datasource": {
-                "type": "tempo",
-                "uid": "${tempo}"
-              },
-              "refId": "A",
-              "queryType": "traceql",
-              "query": "{ name = \"oncall_question\" && span.agent.checks.failed != nil } | count_over_time() by (span.agent.checks.failed, span.gen_ai.request.model)",
-              "metricsQueryType": "range",
-              "step": "5m",
-              "legendFormat": ""
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 80,
-                "showPoints": "never",
-                "drawStyle": "bars",
-                "spanNulls": true,
-                "gradientMode": "none",
-                "axisSoftMin": 0,
-                "insertNulls": false,
-                "stacking": {
-                  "mode": "normal",
-                  "group": "A"
-                },
-                "barAlignment": -1
-              },
-              "color": {
-                "mode": "palette-classic"
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "bottom",
-              "calcs": [
-                "sum"
-              ],
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "id": 42,
-          "gridPos": {
-            "x": 0,
-            "y": 106,
-            "w": 8,
-            "h": 9
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Runs cut off by their deadline, by kind of question",
-          "description": "One run in ten gets a 1.5 second deadline on purpose. Runs with more tool round trips get cut off more.",
-          "datasource": {
-            "type": "tempo",
-            "uid": "${tempo}"
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "tempo",
-                "uid": "${tempo}"
-              },
-              "refId": "A",
-              "queryType": "traceql",
-              "query": "{ name = \"oncall_question\" && span.agent.outcome = \"timeout\" } | count_over_time() by (span.agent.task)",
-              "metricsQueryType": "range",
-              "step": "5m",
-              "legendFormat": ""
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 80,
-                "showPoints": "never",
-                "drawStyle": "bars",
-                "spanNulls": true,
-                "gradientMode": "none",
-                "axisSoftMin": 0,
-                "insertNulls": false,
-                "stacking": {
-                  "mode": "normal",
-                  "group": "A"
-                },
-                "barAlignment": -1
-              },
-              "color": {
-                "mode": "palette-classic"
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "bottom",
-              "calcs": [
-                "sum"
-              ],
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "id": 43,
-          "gridPos": {
-            "x": 8,
-            "y": 106,
-            "w": 8,
-            "h": 9
-          }
-        },
-        {
-          "type": "timeseries",
-          "title": "Runs over 8 seconds, by kind of question and model",
-          "description": "Slow runs, counted from spans. Signed in, each bar links to the traces behind it.",
-          "datasource": {
-            "type": "tempo",
-            "uid": "${tempo}"
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "tempo",
-                "uid": "${tempo}"
-              },
-              "refId": "A",
-              "queryType": "traceql",
-              "query": "{ name = \"oncall_question\" && duration > 8s } | count_over_time() by (span.agent.task, span.gen_ai.request.model)",
-              "metricsQueryType": "range",
-              "step": "5m",
-              "legendFormat": ""
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "lineWidth": 2,
-                "fillOpacity": 80,
-                "showPoints": "never",
-                "drawStyle": "bars",
-                "spanNulls": true,
-                "gradientMode": "none",
-                "axisSoftMin": 0,
-                "insertNulls": false,
-                "stacking": {
-                  "mode": "normal",
-                  "group": "A"
-                },
-                "barAlignment": -1
-              },
-              "color": {
-                "mode": "palette-classic"
-              }
-            },
-            "overrides": []
-          },
-          "options": {
-            "legend": {
-              "displayMode": "table",
-              "placement": "bottom",
-              "calcs": [
-                "sum"
-              ],
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "id": 44,
-          "gridPos": {
-            "x": 16,
-            "y": 106,
-            "w": 8,
-            "h": 9
-          }
+          "expr": "vector(1)",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": false,
+          "instant": true
         }
       ],
-      "id": 41,
+      "transparent": true,
+      "id": 25,
       "gridPos": {
-        "x": 0,
-        "y": 105,
-        "w": 24,
-        "h": 1
+        "x": 12,
+        "y": 41,
+        "w": 12,
+        "h": 10
       }
     }
   ]

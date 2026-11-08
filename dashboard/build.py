@@ -4,6 +4,8 @@ python3 build.py            -> portable file with data source pickers, for this 
 python3 build.py <prom-uid> <tempo-uid>  -> file bound to one Prometheus and one Tempo data source, for a live stack
 """
 import json, os, sys
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 UID = sys.argv[1] if len(sys.argv) > 1 else None
 DS = {'type': 'prometheus', 'uid': UID or '${datasource}'}
@@ -212,41 +214,6 @@ ai.add(compare('Both models, last 6 hours', [
     ('Cost per 1,000 runs', f'(({cost_expr("6h")}) or (sum by (gen_ai_request_model) (increase(agent_runs_total[6h])) * 0)) / sum by (gen_ai_request_model) (increase(agent_runs_total[6h])) * 1000', 'currencyUSD', [{'id': 'decimals', 'value': 3}] + NO_PRICE),
 ], 'The same questions go to both models all day. Read across a row to pick a model for this job: speed, whether it does what it was asked, and what it costs at list price.'), 24, 5)
 
-ai.row('A real workload: the fix explainer for react-inp-blame')
-ai.add(text(
-    '[react-inp-blame](https://github.com/adityareddy-dev/react-inp-blame) is my library that says which React component made a click slow. '
-    'Here a headless Chrome opens its live demo at [reactinpblame.com](https://reactinpblame.com), makes one of the demo\'s slow interactions, '
-    'and reads the report the library writes. A model on the AI SDK (Gemini 3.1 Flash-Lite, Gemini API free tier) gets that report, reads the component\'s source with one tool, '
-    'and says why the interaction was slow and what to change. Every answer is checked against the library\'s own blame and against the fix the demo documents, which the model never sees. '
-    'Same instrumentation as the agent above: `gen_ai.client.inference.duration` from @ai-sdk/otel, token usage, and spans through the Collector.'), 24, 3)
-IXR = 'inp_explainer_runs_total'
-IXC = 'inp_explainer_checks_total'
-IXD = 'inp_explainer_interaction_duration_seconds'
-pct = {'mode': 'absolute', 'steps': [{'color': RED, 'value': None}, {'color': YELLOW, 'value': 0.7}, {'color': GOOD, 'value': 0.9}]}
-ai.add(stat('Explanations, last hour', f'sum(increase({IXR}{{outcome="ok"}}[1h]))', 'short',
-            'Interactions measured on the live demo and explained. Zero means it stopped.', 0,
-            thresholds={'mode': 'absolute', 'steps': [{'color': RED, 'value': None}, {'color': GOOD, 'value': 1}]}), 5, 4, 0)
-ai.add(stat('Named the component the library blamed, last 6 hours', f'sum(increase({IXC}{{check="named_culprit", result="pass"}}[6h])) / sum(increase({IXC}{{check="named_culprit"}}[6h]))', 'percentunit',
-            'The answer names the component, handler or child react-inp-blame put the time on.', 1, thresholds=pct), 5, 4, 5)
-ai.add(stat('Gave the fix the demo documents, last 6 hours', f'sum(increase({IXC}{{check="right_fix", result="pass"}}[6h])) / sum(increase({IXC}{{check="right_fix"}}[6h]))', 'percentunit',
-            'The answer proposes the fix the demo\'s lab page lists for that interaction (useMemo, virtualise, move state down, a worker, and so on). The model never sees that page.', 1, thresholds=pct), 5, 4, 10)
-ai.add(stat('p95 model call, last hour', f'histogram_quantile(0.95, sum by (le) (rate({INF}_bucket{{{IX}}}[1h])))', 's',
-            'gen_ai.client.inference.duration from @ai-sdk/otel, for the explainer only.', 2, BLUE), 4, 4, 15)
-ai.add(stat('p95 to explain one interaction, last hour', f'histogram_quantile(0.95, sum by (le) (rate({SM}_bucket{{{IX}, span_name="explain_interaction", agent_outcome="ok"}}[1h])))', 's',
-            'From the explain_interaction span: measuring the click in Chrome, reading the source and writing the answer.', 1, BLUE), 5, 4, 19)
-ixt = compare('Each slow interaction on the live demo, last 6 hours', [
-    ('Measured in Chrome (median)', f'histogram_quantile(0.5, sum by (le, agent_task) (rate({IXD}_bucket[6h])))', 's', [{'id': 'decimals', 'value': 2}]),
-    ('p95 to explain', f'histogram_quantile(0.95, sum by (le, agent_task) (rate({SM}_bucket{{{IX}, span_name="explain_interaction", agent_outcome="ok"}}[6h])))', 's', [{'id': 'decimals', 'value': 1}]),
-    ('Read the source', f'sum by (agent_task) (increase({IXC}{{check="read_source", result="pass"}}[6h])) / sum by (agent_task) (increase({IXC}{{check="read_source"}}[6h]))', 'percentunit', [{'id': 'decimals', 'value': 0}]),
-    ('Named the culprit', f'sum by (agent_task) (increase({IXC}{{check="named_culprit", result="pass"}}[6h])) / sum by (agent_task) (increase({IXC}{{check="named_culprit"}}[6h]))', 'percentunit', [{'id': 'decimals', 'value': 0}]),
-    ('Right fix', f'sum by (agent_task) (increase({IXC}{{check="right_fix", result="pass"}}[6h])) / sum by (agent_task) (increase({IXC}{{check="right_fix"}}[6h]))', 'percentunit', [{'id': 'decimals', 'value': 0}]),
-    ('Tokens per explanation', f'sum by (agent_task) (increase({TOK}_sum{{{IX}}}[6h])) / sum by (agent_task) (increase({IXR}{{outcome="ok"}}[6h]))', 'short', [{'id': 'decimals', 'value': 0}]),
-], 'One row per interaction in the demo\'s anti-pattern lab. Read across: how slow the click really was, how long the explanation took, and whether it got the cause and the fix right.',
-    key='agent_task', key_name='Interaction')
-ixt['fieldConfig']['defaults']['mappings'] = [{'type': 'special', 'options': {'match': 'nan', 'result': {'text': '–'}}},
-                                               {'type': 'special', 'options': {'match': 'null', 'result': {'text': '–'}}}]
-ai.add(ixt, 24, 7)
-
 ai.row('Latency: gen_ai.client.inference.duration')
 model_colors = [color_override('.*gemma.*', BLUE, True), color_override('.*gemini.*', ORANGE, True)]
 ai.add(series('p50 and p95 inference latency by model', [
@@ -355,6 +322,132 @@ ai_json = dashboard('ai-agent-genai-otel', 'AI agent: latency, tokens and cost f
                     ['ai-sdk', 'opentelemetry', 'gen-ai', 'golden-grot'],
                     collapse(ai.panels, {'Tokens and cost', 'The agent loop', "Spans from @ai-sdk/otel, turned into metrics by the Collector", 'Which runs, from the traces in Tempo'}),
                     annotations=[ERRORS])
+
+# Keep the synthetic shop as a separate reference dashboard.
+reference = ai_json
+reference['uid'] = 'ai-agent-genai-reference'
+reference['title'] = 'Reference: pretend-shop agent'
+# Per-scenario run history remains in counters and traces.
+def trim_reference(panels):
+    out = []
+    for panel in panels:
+        if 'panels' in panel:
+            panel['panels'] = trim_reference(panel['panels'])
+        queries = [t.get('expr', '') for t in panel.get('targets', [])]
+        if any(SM in q and ('agent_task' in q or 'agent_outcome' in q) for q in queries):
+            continue
+        out.append(panel)
+    return out
+reference['panels'] = trim_reference(reference['panels'])
+with open(os.path.join(OUT, 'reference' + ('.live' if UID else '') + '.json'), 'w') as f:
+    json.dump(reference, f, indent=2)
+    f.write('\n')
+
+entry = Board()
+with open(os.path.join(OUT, '../explainer/recorded-example.json')) as f:
+    sample = json.load(f)
+example_text = ''
+if sample.get('answer'):
+    when = datetime.fromisoformat(sample['recorded_at'].replace('Z', '+00:00')).astimezone(ZoneInfo('America/Chicago'))
+    answer_sample = sample['answer']
+    example_text = ('\n\nRecorded response, ' + when.strftime('%B %d, %Y, %I:%M:%S %p %Z (%z)') +
+                    ', ' + sample['scenario'] + ', measured ' + str(sample['duration_ms']) + ' ms.\n> ' +
+                    answer_sample['explanation'] + '\n\nBlamed: `' + answer_sample['culprit'] +
+                    '`. Source: `' + answer_sample['source_file'] + '`. Suggested strategy: `' +
+                    answer_sample['suggested_strategy'] + '`. Recorded result: `' + sample['outcome'] +
+                    '`. Trace: `' + sample['trace_id'] + '`. This example is fixed; the statistics are live.')
+IXR = 'inp_explainer_runs_total'
+IXC = 'inp_explainer_checks_total'
+IXD = 'inp_explainer_interaction_duration_seconds'
+completed = f'sum(increase({IXR}{{outcome=~"passed|evaluation_failed"}}[1h]))'
+attempted = f'sum(increase({IXR}{{outcome!="quota_blocked"}}[1h]))'
+passed = f'sum(increase({IXR}{{outcome="passed"}}[1h]))'
+age = 'time() - max(inp_explainer_last_completed_seconds)'
+heartbeat_age = 'time() - max(inp_explainer_heartbeat_seconds)'
+fresh = f'({age} < 1200) and on() ({heartbeat_age} < 180)'
+answer = f'(((2 + ({passed} >= bool {attempted} - 0.00001)) and on() ({attempted} > 0)) and on() ({fresh})) or ((vector(1) and on() (max_over_time(inp_explainer_last_completed_seconds[24h]) > 0))) or vector(0)'
+entry.add(text(
+    '### Is the explainer giving source-backed suggestions for measured slow interactions?\n'
+    'Chrome measures the live [react-inp-blame demo](https://reactinpblame.com), then the AI SDK explains its report. '
+    'This is a demo workload. Each finished answer is checked for a successful source response, the exact blamed name, '
+    'a source citation and a recommended strategy ID matching a documented demo option. '
+    'The strategy check does not validate the prose or establish that a change works. Suggestions have not been applied or benchmarked. '
+    'Source files are the pinned ea73e5d snapshot, not a verified copy of the current deploy. '
+    'Summary: rolling last hour; activity detail: last six hours; freshness: last completed response, stale after 20 minutes. '
+    'The pretend-shop agent is in dashboard/reference.json.'), 24, 4)
+status = stat('Source-backed suggestions, last hour', answer, 'short',
+              'No data: no completed response in 24h. Stale: latest response >20m, telemetry >3m or no recent attempts. '
+              'Needs attention: an attempt did not pass every check. Checks passed: every recent attempt passed. These are automated checks, not proof of a faster fix.', 0)
+status['fieldConfig']['defaults']['mappings'] = [{'type': 'value', 'options': {
+    '0': {'text': 'No data', 'color': 'gray'}, '1': {'text': 'Stale / no recent answers', 'color': 'orange'},
+    '2': {'text': 'Needs attention', 'color': 'red'}, '3': {'text': 'Checks passed', 'color': 'green'}}}]
+entry.add(status, 8, 4, 0)
+entry.add(stat('Run count estimate, last hour', attempted, 'short', 'Counter increase estimate: includes passed, failed checks, errors, timeouts and no-report attempts; excludes local quota skips.', 0), 4, 4, 8)
+entry.add(stat('Whole runs passing / attempts, last hour', f'{passed} / ({attempted} > 0)', 'percentunit',
+               'Numerator: runs passing all four checks. Denominator: every attempted run, including errors and timeouts. No attempts leaves this empty.', 1), 6, 4, 12)
+entry.add(stat('Last completed response age', age, 's', 'Age of a response, including responses that fail evaluation. Empty until the first response.', 0), 6, 4, 18)
+# Keep the answer above the explanation without changing existing panel IDs.
+intro = entry.panels.pop(0)
+intro['gridPos']['y'] = 4
+for panel in entry.panels:
+    panel['gridPos']['y'] = 0
+entry.panels.append(intro)
+entry.row('What happened, last hour')
+entry.add(stat('Responses finished, last hour', completed, 'short', 'Both passing and failing evaluations. Finishing is separate from passing.', 0), 6, 4, 0)
+entry.add(stat('Whole runs passing, last hour', passed, 'short', 'The numerator of the run-level fraction.', 0), 6, 4, 6)
+entry.add(stat('Errors and timeouts, last hour', f'sum(increase({IXR}{{outcome=~"error|timeout|no_report"}}[1h]))', 'short',
+               'Includes browser runs without a report. Inspect outcomes below.', 0, RED), 6, 4, 12)
+entry.add(stat('Telemetry sample age', heartbeat_age, 's', 'The metric value is exporter wall time; old telemetry is never treated as healthy activity.', 0), 6, 4, 18)
+entry.add(series('Runs by outcome, rolling last hour', [target(f'sum by (outcome) (increase({IXR}[1h]))', '{{outcome}}')],
+                 'short', 'Quota skips remain visible but are not model attempts.', bars=True, stack=True,
+                 overrides=[color_override('passed', GOOD), color_override('evaluation_failed', RED), color_override('timeout', YELLOW), color_override('error', RED)]), 12, 8, 0)
+entry.add(series('Individual check fractions, rolling last hour', [target(
+    f'sum by (check) (increase({IXC}{{result="pass"}}[1h])) / sum by (check) (increase({IXC}[1h]))', '{{check}}')],
+    'percentunit', 'These fractions count checks on completed responses. The top fraction counts whole runs and includes failed attempts.'), 12, 8, 12)
+entry.row('Browser, model, source tool and whole run')
+entry.add(compare('Latest browser reports; run estimates over the last 6 hours', [
+    ('Cumulative browser samples', f'sum by (agent_task) ({IXD}_count)', 'short', []),
+    ('Latest measured interaction', 'max by (agent_task) (inp_explainer_interaction_last_duration_seconds)', 's', []),
+    ('Report age', 'time() - max by (agent_task) (inp_explainer_interaction_last_measured_seconds)', 's', []),
+    ('Attempted runs, last 6h', f'sum by (agent_task) (increase({IXR}{{outcome!="quota_blocked"}}[6h]))', 'short', []),
+], 'Browser sample counters start with each instrument series and reset on service restart. Latest duration and age come from actual Chrome reports; run estimates use a six-hour window. Not customer production traffic.', key='agent_task', key_name='Scenario'), 24, 7)
+entry.add(stat('Model call estimate, last hour', f'sum(increase({INF}_count{{{IX}}}[1h]))', 'short',
+               'SDK histogram sample count; one run can make several model calls.', 0), 6, 4, 0)
+entry.add(stat('p95 model call, last hour', f'histogram_quantile(0.95, sum by (le) (rate({INF}_bucket{{{IX}}}[1h])))', 's',
+               'The SDK inference histogram, including calls with error.type.', 2), 6, 4, 6)
+entry.add(stat('p95 source tool, last hour', f'histogram_quantile(0.95, sum by (le) (rate({SM}_bucket{{{IX}, gen_ai_operation_name="execute_tool"}}[1h])))', 's',
+               'Source tool spans from the same run trace.', 2), 6, 4, 12)
+entry.add(stat('p95 whole run, last hour', f'histogram_quantile(0.95, sum by (le) (rate({SM}_bucket{{{IX}, span_name="explain_interaction"}}[1h])))', 's',
+               'Includes browser measurement, tool reads, model calls and evaluation; all outcomes.', 2), 6, 4, 18)
+entry.row('Tokens and free allowance')
+for x, kind in enumerate(('input', 'output')):
+    entry.add(stat(f'{kind.capitalize()} token estimate, last hour',
+                   f'sum(increase({TOK}_sum{{{IX}, gen_ai_token_type="{kind}"}}[1h]))', 'short',
+                   'Rolling last-hour counter increase estimate from the SDK token histogram, summed across model calls. '
+                   'Empty means no token samples; zero means samples with no increase.', 0), 6, 6, x * 6)
+entry.add(text(
+    '### Free project allowance\n'
+    'AI Studio account reading, November 7, 2026, 7:28 PM CST (-06:00): Gemini 3.1 Flash-Lite, Free tier; '
+    '500 requests/day, 15 requests/minute and 250,000 input tokens/minute. '
+    '[Rate-limit definitions](https://ai.google.dev/gemini-api/docs/rate-limits).\n\n'
+    'The persistent local ceiling is 400 reserved requests per Pacific day. Each run reserves four requests before it starts; '
+    'unused reservations are not returned. SDK retries are disabled. The model-call estimate above counts measured calls, '
+    'not reservations. Token totals cover the last hour, not the per-minute allowance window. No paid fallback.'), 12, 6, 12)
+if example_text:
+    entry.row('Recorded ContextStorm answer and source review')
+    entry.add(text(example_text.lstrip()), 12, 10, 0)
+    entry.add(text(
+        '### Source review: useMemo does not establish this claim\n'
+        'In the pinned [ContextStorm.tsx](https://github.com/adityareddy-dev/react-inp-blame/blob/ea73e5d/apps/demo/src/scenarios/ContextStorm.tsx), '
+        'every Add to cart click increments `items`, and every one of the 800 `LineItem` consumers reads `items` from `CartContext`. '
+        'A provider value memoized with `items` as a dependency still changes on every measured click. '
+        "The recorded answer's claim that `useMemo` prevents those 800 consumers from rerendering is not established by this source.\n\n"
+        'The recorded `passed` result means the four structured checks passed: successful source read, exact blamed name, '
+        'source citation and documented strategy ID. The prose claim still needs review. '
+        'The answer and recorded result are preserved. No suggested fix has been applied or benchmarked.'), 12, 10, 12)
+ai_json = dashboard('ai-agent-genai-otel', 'React interaction explainer: source, checks and timing',
+                    'Measured demo interactions and source-backed suggestion checks. No suggested change has been applied or benchmarked.',
+                    ['ai-sdk', 'opentelemetry', 'react-inp-blame', 'golden-grot'], entry.panels, time='now-6h')
 
 suffix = '' if not UID else '.live'
 with open(os.path.join(OUT, f'dashboard{suffix}.json'), 'w') as f:

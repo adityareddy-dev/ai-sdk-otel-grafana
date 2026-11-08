@@ -1,0 +1,26 @@
+{
+  "recorded_at": "2026-11-08T01:47:05.580Z",
+  "scenario": "context-storm",
+  "duration_ms": 200,
+  "blame": {
+    "kind": "render",
+    "name": "OrderSummary",
+    "detail": "LineItem ×800",
+    "ms": null,
+    "confidence": "inferred"
+  },
+  "answer": {
+    "culprit": "OrderSummary",
+    "source_file": "ContextStorm.tsx",
+    "suggested_strategy": "stabilize_context",
+    "explanation": "The ContextStorm component creates a new object reference for the CartContext provider every time it renders, which causes all components consuming that context to re-render. Stabilizing the context value using `useMemo` ensures that only consumers who actually need to react to data changes will re-render. This will prevent the unnecessary re-rendering of the 800 LineItem components."
+  },
+  "checks": {
+    "read_source": true,
+    "named_culprit": true,
+    "documented_strategy": true,
+    "cited_source": true
+  },
+  "trace_id": "96425d3dda8faebd17c24ab658b66f2b",
+  "outcome": "passed"
+}
